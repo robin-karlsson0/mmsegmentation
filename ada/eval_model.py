@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import argparse
-import pickle
 import os.path as osp
 import mmcv
 from mmseg.core.evaluation import mean_iou
