@@ -123,6 +123,8 @@ if __name__ == "__main__":
     checkpoint_directory = args.checkpoint_dir
     checkpoint_filename = args.checkpoint
     dataset_name = args.dataset
+    eval_name = args.eval_name
+    output_dir = args.output_dir
     
     checkpoint_filepath = osp.join(checkpoint_directory, checkpoint_filename)
 
@@ -151,5 +153,5 @@ if __name__ == "__main__":
     # Evaluate
     result = eval_samples(model, img_paths, label_paths, CITYSCAPES_NUM_CLASSES)
 
-    write_compressed_pickle(result, f"eval_{dataset_name}_{checkpoint_filename[:-4]}", ".")
+    write_compressed_pickle(result, f"{eval_name}", output_dir)
     
