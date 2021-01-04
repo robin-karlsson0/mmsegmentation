@@ -8,7 +8,7 @@ from mmseg.core.evaluation import mean_iou
 from mmcv.runner import load_checkpoint
 from mmseg.models import build_segmentor
 from mmseg.apis import inference_segmentor
-from ada.eval_datasets import get_cityscapes_eval_samples
+from ada.eval_datasets import get_cityscapes_eval_samples, get_a2d2_eval_samples
 from ada.file_io import write_compressed_pickle
 
 
@@ -89,25 +89,21 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description='Evaluate model sample-by-sample')
     parser.add_argument(
-        '--eval_path', type=str,
-        default='data/cityscapes',
-        help='Path to root of evaluation samples')
+        'eval_path', type=str,
+        help='Absolute path to root of evaluation samples')
     parser.add_argument(
-        '--config_filepath', type=str,
-        default='configs/deeplabv3plus/deeplabv3plus_r50-d8_512x1024_40k_cityscapes.py',
+        'config_filepath', type=str,
         help='Path to model configuration file')
     parser.add_argument(
-        '--checkpoint_dir', type=str,
+        'checkpoint_dir', type=str,
         default='checkpoints',
         help='Path to checkpoint file directory')
     parser.add_argument(
-        '--checkpoint', type=str,
-        default='deeplabv3plus_r50-d8_512x1024_40k_cityscapes.pth',
+        'checkpoint', type=str,
         help='Checkpoint filename')
     parser.add_argument(
-        '--dataset', type=str,
-        default='cityscapes',
-        help='Name of dataset to evaluate on (i.e. cityscapes)')
+        'dataset', type=str,
+        help='Name of dataset to evaluate on (i.e. cityscapes, a2d2)')
     args = parser.parse_args()
     return args
 
@@ -133,7 +129,19 @@ if __name__ == "__main__":
     # Get dataset filepaths
     if dataset_name == 'cityscapes':
         img_paths, label_paths = get_cityscapes_eval_samples(eval_path, dirs=['val'])
+    elif dataset_name == 'a2d2':
+        img_paths, label_paths = get_a2d2_eval_samples(eval_path, dirs=['train', 'val'])
+    else:
+        print(f"ERROR: invalid 'dataset_name' given ({dataset_name})")
+        exit()
 
+    if len(img_paths) == 0:
+        print(f"ERROR: no image paths found (len(img_paths) --> {len(img_paths)})")
+        exit()
+    if len(label_paths) == 0:
+        print(f"ERROR: no label paths found (len(label_paths) --> {len(label_paths)})")
+        exit()
+    
     # Evaluate
     result = eval_samples(model, img_paths, label_paths, CITYSCAPES_NUM_CLASSES)
 

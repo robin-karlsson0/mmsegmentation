@@ -26,3 +26,27 @@ def get_cityscapes_eval_samples(root_path, dirs=['train', 'val']):
     label_paths.sort()
 
     return img_paths, label_paths
+
+
+def get_a2d2_eval_samples(root_path, dirs=['train', 'val']):
+    '''Creates two lists of paths to all images and labels.
+
+    Args:
+        root_path: Path to A2D2 root.
+        dirs: List of directories to add samples from
+    
+    Returns:
+        Lists of ordered image and label paths.
+    '''
+
+    img_paths = []
+    label_paths = []
+
+    for dir in dirs:
+        img_paths += glob.glob(osp.join(root_path, f'img_dir/{dir}/*.png'))
+        label_paths += glob.glob(osp.join(root_path, f'ann_dir/{dir}/*_labelTrainIds.png'))
+    
+    img_paths.sort()
+    label_paths.sort()
+
+    return img_paths, label_paths
