@@ -104,6 +104,12 @@ def parse_args():
     parser.add_argument(
         'dataset', type=str,
         help='Name of dataset to evaluate on (i.e. cityscapes, a2d2)')
+    parser.add_argument(
+        'eval_name', type=str,
+        help='Name of evaluation experiment')
+    parser.add_argument(
+        'output_dir', type=str,
+        help='Output directory')
     args = parser.parse_args()
     return args
 
@@ -117,11 +123,13 @@ if __name__ == "__main__":
     checkpoint_directory = args.checkpoint_dir
     checkpoint_filename = args.checkpoint
     dataset_name = args.dataset
-
-    print(f"Evaluate model\n    {checkpoint_filename}")
-    print(f"On dataset\n    {dataset_name}\n")
-
+    eval_name = args.eval_name
+    output_dir = args.output_dir
+    
     checkpoint_filepath = osp.join(checkpoint_directory, checkpoint_filename)
+
+    print(f"Evaluate model\n    {checkpoint_filepath}")
+    print(f"On dataset\n    {dataset_name}\n")
 
     # Load model
     model = init_model(config_filepath, checkpoint_filepath)
@@ -130,7 +138,7 @@ if __name__ == "__main__":
     if dataset_name == 'cityscapes':
         img_paths, label_paths = get_cityscapes_eval_samples(eval_path, dirs=['val'])
     elif dataset_name == 'a2d2':
-        img_paths, label_paths = get_a2d2_eval_samples(eval_path, dirs=['train', 'val'])
+        img_paths, label_paths = get_a2d2_eval_samples(eval_path, dirs=['val'])
     else:
         print(f"ERROR: invalid 'dataset_name' given ({dataset_name})")
         exit()
@@ -145,4 +153,5 @@ if __name__ == "__main__":
     # Evaluate
     result = eval_samples(model, img_paths, label_paths, CITYSCAPES_NUM_CLASSES)
 
-    write_compressed_pickle(result, f"eval_{dataset_name}_{checkpoint_filename[:-4]}", ".")
+    write_compressed_pickle(result, f"{eval_name}", output_dir)
+    
