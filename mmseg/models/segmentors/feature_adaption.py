@@ -87,9 +87,11 @@ class Discriminator(torch.nn.Module):
 class FeatureAdaption(EncoderDecoder):
     """Encoder Decoder segmentors.
 
-    EncoderDecoder typically consists of backbone, decode_head, auxiliary_head.
-    Note that auxiliary_head is only used for deep supervision during training,
-    which could be dumped during inference.
+    Each MMSegmentation 
+
+    Two backbones
+        self.backbone: Gets adapted so target features --> source features
+        self.backbone_frozen: Static distribution of source features
     """
 
     def __init__(self,
@@ -102,7 +104,6 @@ class FeatureAdaption(EncoderDecoder):
                  pretrained=None):
         super(FeatureAdaption, self).__init__(backbone, decode_head, neck, auxiliary_head, train_cfg, test_cfg, pretrained)
         self.backbone = builder.build_backbone(backbone)
-        self.backbone_adapt = None  # Must be initialized after backbone weights set
         if neck is not None:
             self.neck = builder.build_neck(neck)
         self._init_decode_head(decode_head)
@@ -115,9 +116,79 @@ class FeatureAdaption(EncoderDecoder):
 
         assert self.with_decode_head
 
-    def extract_feat_adapt(self, img):
+        print("\n###################################")
+        print("#  Initializing feature adaption")
+        print("###################################\n")
+
+        ##############
+        #  DATASETS
+        ##############
+
+        # Datasets
+        self.cropbox = (512, 1024)
+        self.dataset_path_source = '/media/robin/Data/feat_adapt_dataset/cityscapes'  #'/var/datasets/feat_adapt_dataset/a2d2'
+        self.dataset_path_target = '/media/robin/Data/feat_adapt_dataset/a2d2'  #'/var/datasets/feat_adapt_dataset/cityscapes'
+        self.dataset_source = FeatureAdaptionDataset(self.dataset_path_source, self.cropbox)
+        self.dataset_target = FeatureAdaptionDataset(self.dataset_path_target, self.cropbox)
+        # Dataloaders
+        self.dataloader_source = DataLoader(self.dataset_source, batch_size=2)
+        self.dataloader_target = DataLoader(self.dataset_target, batch_size=2)
+
+        print(f"Using {len(self.dataloader_source.dataset)} source images")
+        print(f"Using {len(self.dataloader_target.dataset)} target images\n")
+
+        ############
+        #  MODELS
+        ############
+
+        self.backbone_frozen = None  # Must be initialized AFTER backbone weights set
+
+        self.discr = Discriminator(input_dim=512, output_dim=2, dropout_p=0.5)
+        self.discr = self.discr.to('cuda')
+
+        self.initialize_backbone_frozen = True
+
+        ################
+        #  OPTIMIZERS
+        ################
+
+        # Optimizer for 'backbone_adapt' parameters
+        params = [p for p in self.backbone.parameters() if p.requires_grad]
+        self.optimizer_backbone = torch.optim.SGD(params, lr=1e-3, weight_decay=0.0005)#, momentum=0.9)
+
+        # Optimizer for 'discriminator' parameters
+        params = [p for p in self.discr.parameters() if p.requires_grad]
+        self.optimizer_discr = torch.optim.SGD(params, lr=1e-3, weight_decay=0.0005)#, momentum=0.9)
+
+        ##########
+        #  LOSS
+        ##########
+
+        self.NLLLoss = torch.nn.NLLLoss(size_average=True, ignore_index=255)
+
+        ################
+        #  PARAMETERS
+        ################
+
+        # Loss weights
+        self.lambda_discr = 1.
+        self.lambda_gen = 0.1
+
+        self.discr_acc_threshold = 60
+
+        # Optimization variables
+        self.iter_idx = 0
+        self.gen_steps = 0
+        self.gen_steps_tot = 0
+        self.loss_disc_list = deque(maxlen=100)
+        self.loss_gen_list = deque(maxlen=100)
+        self.discr_acc = deque(maxlen=100)
+
+        self.iter_save_interval = 2000
+
+    def extract_feat_frozen(self, img):
         """Extract features from images."""
-        x = self.backbone_adapt(img)
+        x = self.backbone_frozen(img)
         if self.with_neck:
             x = self.neck(x)
         return x
@@ -148,84 +219,37 @@ class FeatureAdaption(EncoderDecoder):
                 DDP, it means the batch si ze on each GPU), which is used for
                 averaging the logs.
         """
-        print("\n###############################")
-        print("#  Starting feature adaption")
-        print("###############################\n")
 
-         # Datasets
-        cropbox = (512, 1024)
-        dataset_path_source = '/media/robin/Data/feat_adapt_dataset/cityscapes'  #/var/datasets/feat_adapt_dataset/a2d2
-        dataset_path_target = '/media/robin/Data/feat_adapt_dataset/a2d2'  #/var/datasets/feat_adapt_dataset/cityscapes
-        dataset_source = FeatureAdaptionDataset(dataset_path_source, cropbox)
-        dataset_target = FeatureAdaptionDataset(dataset_path_target, cropbox)
-        # Dataloaders
-        dataloader_source = DataLoader(dataset_source, batch_size=2)
-        dataloader_target = DataLoader(dataset_target, batch_size=2)
+        # Copy backbone once after checkpoint loaded
+        if self.initialize_backbone_frozen:
+            self.backbone_frozen = copy.deepcopy(self.backbone)
+            self.initialize_backbone_frozen = False
 
-        print(f"Using {len(dataloader_source.dataset)} source images")
-        print(f"Using {len(dataloader_target.dataset)} target images")
+        # Run loop until model save point reached
+        do_not_save = True
+        while do_not_save:
 
-        # Loss function
-        self.NLLLoss = torch.nn.NLLLoss(size_average=True, ignore_index=255)
+            for source_imgs, target_imgs in zip(self.dataloader_source, self.dataloader_target):
 
-        lambda_discr = 1.
-        lambda_gen = 1.
+                self.iter_idx += 1
 
-        discr_acc_threshold = 60
-
-        ############
-        #  MODELS
-        ############
-        # Copy backbone after checkpoint loaded
-        self.backbone_adapt = copy.deepcopy(self.backbone)
-        
-        discr = Discriminator(input_dim=512, output_dim=2, dropout_p=0.5)
-        discr = discr.to('cuda')
-
-        ################
-        #  OPTIMIZERS
-        ################
-        # Optimizer for 'backbone_adapt' parameters
-        params = [p for p in self.backbone_adapt.parameters() if p.requires_grad]
-        optimizer_backbone = torch.optim.Adam(params, lr=1e-4, weight_decay=0.0005)#, momentum=0.9)
-
-        # Optimizer for 'discriminator' parameters
-        params = [p for p in discr.parameters() if p.requires_grad]
-        optimizer_discr = torch.optim.Adam(params, lr=1e-4, weight_decay=0.0005)#, momentum=0.9)
-
-        #img_metas = data_batch["img_metas"]
-        #img = data_batch["img"]  # [batch_n, RGB_C, H, W]
-
-        iter_idx = 0
-        gen_steps = 0
-        gen_steps_tot = 0
-        loss_disc_list = deque(maxlen=100)
-        loss_gen_list = deque(maxlen=100)
-        discr_acc = deque(maxlen=100)
-
-        while True:
-
-            for source_imgs, target_imgs in zip(dataloader_source, dataloader_target):
-
-                iter_idx += 1
-
-                if iter_idx % 100 == 0:
-                    print(f"Iter {iter_idx} | Discr. L {np.mean(loss_disc_list):.6f} (Acc. {np.mean(discr_acc):.2f} %) | Gen. L {np.mean(loss_gen_list):.6f} (steps {gen_steps}/{gen_steps_tot})")
-                    gen_steps = 0
+                if self.iter_idx % 1 == 0:
+                    print(f"Iter {self.iter_idx} | Discr. L {np.mean(self.loss_disc_list):.6f} (Acc. {np.mean(self.discr_acc):.2f} %) | Gen. L {np.mean(self.loss_gen_list):.6f} (steps {self.gen_steps}/{self.gen_steps_tot})")
+                    self.gen_steps = 0
 
                 ############################
                 #  OPTIMIZE DISCRIMINATOR
                 ############################
 
-                optimizer_discr.zero_grad()
+                self.optimizer_discr.zero_grad()
 
                 # Generate model features
-                source_x = self.extract_feat(source_imgs)[-1]  # (2,512,64,128)
-                target_x = self.extract_feat_adapt(target_imgs)[-1]
+                source_x = self.extract_feat_frozen(source_imgs)[-1]  # (2,512,64,128)
+                target_x = self.extract_feat(target_imgs)[-1]
 
                 # Discriminator prediction
-                source_pred = discr(source_x)  # (2,2,64,128)
-                target_pred = discr(target_x)
+                source_pred = self.discr(source_x)  # (2,2,64,128)
+                target_pred = self.discr(target_x)
 
                 pred_discr = torch.cat((source_pred, target_pred))
 
@@ -241,70 +265,59 @@ class FeatureAdaption(EncoderDecoder):
                 # Compute loss
                 loss_discr = self.NLLLoss(F.log_softmax(pred_discr, dim=1), label)
 
-                loss_discr = lambda_discr * loss_discr
+                loss_discr = self.lambda_discr * loss_discr
 
                 loss_discr.backward()
 
-                optimizer_discr.step()
+                self.optimizer_discr.step()
 
                 # Compute discriminator accuracy
                 pred_dis = torch.squeeze(pred_discr.max(1)[1])
                 dom_acc = (pred_dis == label).float().mean().item() 
-                discr_acc.append(dom_acc * 100.)
+                self.discr_acc.append(dom_acc * 100.)
 
-                loss_disc_list.append(loss_discr.item())
+                self.loss_disc_list.append(loss_discr.item())
 
                 ########################
                 #  OPTIMIZE GENERATOR
                 ########################
 
                 # Only train generator if discriminator is accurate
-                if np.mean(discr_acc) < discr_acc_threshold:
-                    continue
+                if np.mean(self.discr_acc) > self.discr_acc_threshold:
 
-                optimizer_discr.zero_grad()
-                optimizer_backbone.zero_grad()
+                    self.optimizer_discr.zero_grad()
+                    self.optimizer_backbone.zero_grad()
 
-                # Generate model features
-                target_x = self.extract_feat_adapt(target_imgs)[-1]
+                    # Generate model features
+                    target_x = self.extract_feat(target_imgs)[-1]
 
-                # Discriminator prediction
-                pred_discr = discr(target_x)
+                    # Discriminator prediction
+                    pred_discr = self.discr(target_x)
 
-                # Discriminator label
-                label = torch.zeros((N, d1, d2), dtype=torch.long).to('cuda')
+                    # Discriminator label
+                    label = torch.ones((N, d1, d2), dtype=torch.long).to('cuda')
 
-                loss_gen = self.NLLLoss(F.log_softmax(pred_discr, dim=1), label)
+                    loss_gen = self.NLLLoss(F.log_softmax(pred_discr, dim=1), label)
 
-                loss_gen = lambda_gen * loss_gen
+                    loss_gen = self.lambda_gen * loss_gen
 
-                loss_gen.backward()
+                    loss_gen.backward()
 
-                optimizer_backbone.step()
+                    self.optimizer_backbone.step()
 
-                loss_gen_list.append(loss_gen.item())
-                gen_steps += 1
-                gen_steps_tot += 1
-
-
-        #sample = self.dataset_train[0]
-        #img_source = sample['img_source']
-        #img_target = sample['img_target']
-
-        #img_source_viz = (img_source + 1.0) / 0.5
-
-        #img_source = torch.unsqueeze(img_source, 0)
-        #img_source = img_source.repeat(2,1,1,1)
-        #out = self.simple_test(img_source, img_metas, rescale=False)
-
-        #plt.subplot(1,2,1)
-        #plt.imshow(np.transpose(img_source_viz.detach().cpu().numpy(), (1,2,0)))
-        #plt.subplot(1,2,2)
-        #plt.imshow(out[0])
-        #plt.show()
+                    self.loss_gen_list.append(loss_gen.item())
+                    self.gen_steps += 1
+                    self.gen_steps_tot += 1
+                
+                if self.iter_idx % self.iter_save_interval == 0:
+                    do_not_save = False
+                    break
 
         losses = self(**data_batch)
         loss, log_vars = self._parse_losses(losses)
+
+        # Zero loss to not interfere with feature adaption
+        loss = torch.tensor(0., requires_grad=True)
 
         outputs = dict(
             loss=loss,
