@@ -154,13 +154,13 @@ class FeatureAdaption(EncoderDecoder):
 
          # Datasets
         cropbox = (512, 1024)
-        dataset_path_source = '/media/robin/Data/feat_adapt_dataset/cityscapes'
-        dataset_path_target = '/media/robin/Data/feat_adapt_dataset/a2d2'
+        dataset_path_source = '/media/robin/Data/feat_adapt_dataset/cityscapes'  #/var/datasets/feat_adapt_dataset/a2d2
+        dataset_path_target = '/media/robin/Data/feat_adapt_dataset/a2d2'  #/var/datasets/feat_adapt_dataset/cityscapes
         dataset_source = FeatureAdaptionDataset(dataset_path_source, cropbox)
         dataset_target = FeatureAdaptionDataset(dataset_path_target, cropbox)
         # Dataloaders
-        dataloader_source = DataLoader(dataset_source, batch_size=3)
-        dataloader_target = DataLoader(dataset_target, batch_size=3)
+        dataloader_source = DataLoader(dataset_source, batch_size=2)
+        dataloader_target = DataLoader(dataset_target, batch_size=2)
 
         print(f"Using {len(dataloader_source.dataset)} source images")
         print(f"Using {len(dataloader_target.dataset)} target images")
@@ -168,7 +168,10 @@ class FeatureAdaption(EncoderDecoder):
         # Loss function
         self.NLLLoss = torch.nn.NLLLoss(size_average=True, ignore_index=255)
 
-        self.lambda_discr = 1.
+        lambda_discr = 1.
+        lambda_gen = 1.
+
+        discr_acc_threshold = 60
 
         ############
         #  MODELS
@@ -184,22 +187,31 @@ class FeatureAdaption(EncoderDecoder):
         ################
         # Optimizer for 'backbone_adapt' parameters
         params = [p for p in self.backbone_adapt.parameters() if p.requires_grad]
-        optimizer_backbone = torch.optim.SGD(params, lr=1e-4, momentum=0.9, weight_decay=0.0005)
+        optimizer_backbone = torch.optim.Adam(params, lr=1e-4, weight_decay=0.0005)#, momentum=0.9)
 
         # Optimizer for 'discriminator' parameters
         params = [p for p in discr.parameters() if p.requires_grad]
-        optimizer_discr = torch.optim.Adam(params, lr=1e-4)#, momentum=0.9, weight_decay=0.0005)
+        optimizer_discr = torch.optim.Adam(params, lr=1e-4, weight_decay=0.0005)#, momentum=0.9)
 
         #img_metas = data_batch["img_metas"]
         #img = data_batch["img"]  # [batch_n, RGB_C, H, W]
 
         iter_idx = 0
+        gen_steps = 0
+        gen_steps_tot = 0
         loss_disc_list = deque(maxlen=100)
+        loss_gen_list = deque(maxlen=100)
         discr_acc = deque(maxlen=100)
 
         while True:
 
             for source_imgs, target_imgs in zip(dataloader_source, dataloader_target):
+
+                iter_idx += 1
+
+                if iter_idx % 100 == 0:
+                    print(f"Iter {iter_idx} | Discr. L {np.mean(loss_disc_list):.6f} (Acc. {np.mean(discr_acc):.2f} %) | Gen. L {np.mean(loss_gen_list):.6f} (steps {gen_steps}/{gen_steps_tot})")
+                    gen_steps = 0
 
                 ############################
                 #  OPTIMIZE DISCRIMINATOR
@@ -229,54 +241,60 @@ class FeatureAdaption(EncoderDecoder):
                 # Compute loss
                 loss_discr = self.NLLLoss(F.log_softmax(pred_discr, dim=1), label)
 
-                loss_discr = self.lambda_discr * loss_discr
+                loss_discr = lambda_discr * loss_discr
 
                 loss_discr.backward()
 
                 optimizer_discr.step()
 
+                # Compute discriminator accuracy
+                pred_dis = torch.squeeze(pred_discr.max(1)[1])
+                dom_acc = (pred_dis == label).float().mean().item() 
+                discr_acc.append(dom_acc * 100.)
+
                 loss_disc_list.append(loss_discr.item())
-
-                if iter_idx % 100 == 0:
-
-                    # Compute discriminator accuracy
-                    pred_dis = torch.squeeze(pred_discr.max(1)[1])
-                    dom_acc = (pred_dis == label).float().mean().item() 
-                    discr_acc.append(dom_acc * 100.)
-
-                    print(f"Iter {iter_idx} | NLLLoss {np.mean(loss_disc_list):.6f} | Acc. {np.mean(discr_acc):.2f} %")
-
-                iter_idx += 1
-
-
-                continue
-
-
-
 
                 ########################
                 #  OPTIMIZE GENERATOR
                 ########################
 
-                #optimizer_backbone.zero_grad()
+                # Only train generator if discriminator is accurate
+                if np.mean(discr_acc) < discr_acc_threshold:
+                    continue
 
-        
+                optimizer_discr.zero_grad()
+                optimizer_backbone.zero_grad()
+
+                # Generate model features
+                target_x = self.extract_feat_adapt(target_imgs)[-1]
+
+                # Discriminator prediction
+                pred_discr = discr(target_x)
+
+                # Discriminator label
+                label = torch.zeros((N, d1, d2), dtype=torch.long).to('cuda')
+
+                loss_gen = self.NLLLoss(F.log_softmax(pred_discr, dim=1), label)
+
+                loss_gen = lambda_gen * loss_gen
+
+                loss_gen.backward()
+
+                optimizer_backbone.step()
+
+                loss_gen_list.append(loss_gen.item())
+                gen_steps += 1
+                gen_steps_tot += 1
 
 
-        sample = self.dataset_train[0]
-        img_source = sample['img_source']
-        img_target = sample['img_target']
+        #sample = self.dataset_train[0]
+        #img_source = sample['img_source']
+        #img_target = sample['img_target']
 
-        img_source_viz = (img_source + 1.0) / 0.5
+        #img_source_viz = (img_source + 1.0) / 0.5
 
-        #plt.imshow(np.transpose(img[0].detach().cpu().numpy(), (1,2,0)))
-        #plt.show()
-        #print(img_metas)
-        #print(img.shape)
-        #img = img[0:1]
-        #print(img.shape)
-        img_source = torch.unsqueeze(img_source, 0)
-        img_source = img_source.repeat(2,1,1,1)
+        #img_source = torch.unsqueeze(img_source, 0)
+        #img_source = img_source.repeat(2,1,1,1)
         #out = self.simple_test(img_source, img_metas, rescale=False)
 
         #plt.subplot(1,2,1)
@@ -284,8 +302,6 @@ class FeatureAdaption(EncoderDecoder):
         #plt.subplot(1,2,2)
         #plt.imshow(out[0])
         #plt.show()
-
-        exit()
 
         losses = self(**data_batch)
         loss, log_vars = self._parse_losses(losses)
