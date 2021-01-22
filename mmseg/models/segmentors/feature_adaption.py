@@ -217,6 +217,10 @@ class FeatureAdaption(EncoderDecoder):
         self.loss_gen_list = deque(maxlen=100)
         self.discr_acc = deque(maxlen=100)
 
+        # So that generator is not optimized by chance
+        for _ in range(100):
+            self.discr_acc.append(0.)
+
         self.iter_save_interval = 2000
 
     def extract_feat_frozen(self, img):
