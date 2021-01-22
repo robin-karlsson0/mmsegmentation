@@ -1,0 +1,16 @@
+discr_lr: 1e-4
+model_lr: 1e-4
+batch_size: 2
+cropbox: !!python/tuple [512, 1024]
+dataset_path_source: '/media/robin/Data/feat_adapt_dataset/cityscapes'  #'/var/datasets/feat_adapt_dataset/a2d2'
+dataset_path_target: '/media/robin/Data/feat_adapt_dataset/a2d2'  #'/var/datasets/feat_adapt_dataset/cityscapes'
+train_log_file: 'train_log.txt'
+# Backbone features: 512
+# Output features: 19
+discr_input_dim: 19
+
+save_interval: 2000
+
+# backbone
+# output
+adaption_level: 'output'

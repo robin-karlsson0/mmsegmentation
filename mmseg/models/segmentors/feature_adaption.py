@@ -17,6 +17,8 @@ import mmcv
 import os
 import copy
 from collections import deque
+import yaml
+
 
 class FeatureAdaptionDataset(Dataset):
 
@@ -120,19 +122,44 @@ class FeatureAdaption(EncoderDecoder):
         print("#  Initializing feature adaption")
         print("###################################\n")
 
+        print("Read feature adaption parameters")
+        with open("feat_adapt_params.yaml") as file:
+            params = yaml.full_load(file)
+        
+        self.discr_lr = float(params['discr_lr'])
+        self.model_lr = float(params['model_lr'])
+        self.batch_size = params['batch_size']
+        self.cropbox = params['cropbox']  # (512, 1024)
+        self.dataset_path_source = params['dataset_path_source']
+        self.dataset_path_target = params['dataset_path_target']
+        self.train_log_file = params['train_log_file']
+        self.discr_input_dim = params['discr_input_dim']
+        self.save_interval = params['save_interval']
+        self.adaption_level = params['adaption_level']
+        print(f"discr_lr:            {self.discr_lr}")
+        print(f"model_lr:            {self.model_lr}")
+        print(f"batch_size:          {self.batch_size}")
+        print(f"cropbox:             {self.cropbox}")
+        print(f"dataset_path_source: {self.dataset_path_source}")
+        print(f"dataset_path_target: {self.dataset_path_target}")
+        print(f"train_log_file:      {self.train_log_file}")
+        print(f"discr_input_dim:     {self.discr_input_dim}")
+        print(f"save_interval:       {self.save_interval}")
+        print(f"adaption_level:      {self.adaption_level}\n")
+
+        # Reset training log file
+        with open(self.train_log_file, 'w') as file:
+            file.write('# discr steps | model steps | discr acc\n')
+
         ##############
         #  DATASETS
         ##############
-
         # Datasets
-        self.cropbox = (512, 1024)
-        self.dataset_path_source = '/media/robin/Data/feat_adapt_dataset/cityscapes'  #'/var/datasets/feat_adapt_dataset/a2d2'
-        self.dataset_path_target = '/media/robin/Data/feat_adapt_dataset/a2d2'  #'/var/datasets/feat_adapt_dataset/cityscapes'
         self.dataset_source = FeatureAdaptionDataset(self.dataset_path_source, self.cropbox)
         self.dataset_target = FeatureAdaptionDataset(self.dataset_path_target, self.cropbox)
         # Dataloaders
-        self.dataloader_source = DataLoader(self.dataset_source, batch_size=2)
-        self.dataloader_target = DataLoader(self.dataset_target, batch_size=2)
+        self.dataloader_source = DataLoader(self.dataset_source, batch_size=self.batch_size)
+        self.dataloader_target = DataLoader(self.dataset_target, batch_size=self.batch_size)
 
         print(f"Using {len(self.dataloader_source.dataset)} source images")
         print(f"Using {len(self.dataloader_target.dataset)} target images\n")
@@ -141,12 +168,18 @@ class FeatureAdaption(EncoderDecoder):
         #  MODELS
         ############
 
-        self.backbone_frozen = None  # Must be initialized AFTER backbone weights set
+        # Must be initialized AFTER backbone weights set
+        self.backbone_frozen = None  
+        self.decode_head_frozen = None
 
-        self.discr = Discriminator(input_dim=512, output_dim=2, dropout_p=0.5)
+        self.discr = Discriminator(input_dim=self.discr_input_dim, output_dim=2, dropout_p=0.5)
         self.discr = self.discr.to('cuda')
 
         self.initialize_backbone_frozen = True
+        if self.adaption_level == 'output':
+            self.initialize_decode_head_frozen = True
+        else:
+            self.initialize_decode_head_frozen = False
 
         ################
         #  OPTIMIZERS
@@ -154,11 +187,11 @@ class FeatureAdaption(EncoderDecoder):
 
         # Optimizer for 'backbone_adapt' parameters
         params = [p for p in self.backbone.parameters() if p.requires_grad]
-        self.optimizer_backbone = torch.optim.SGD(params, lr=1e-3, weight_decay=0.0005)#, momentum=0.9)
+        self.optimizer_backbone = torch.optim.SGD(params, lr=self.model_lr, weight_decay=0.0005)
 
         # Optimizer for 'discriminator' parameters
         params = [p for p in self.discr.parameters() if p.requires_grad]
-        self.optimizer_discr = torch.optim.SGD(params, lr=1e-3, weight_decay=0.0005)#, momentum=0.9)
+        self.optimizer_discr = torch.optim.SGD(params, lr=self.discr_lr, weight_decay=0.0005)
 
         ##########
         #  LOSS
@@ -193,6 +226,31 @@ class FeatureAdaption(EncoderDecoder):
             x = self.neck(x)
         return x
 
+    def encode_decode(self, img, img_metas):
+        """Encode images with backbone and decode into a semantic segmentation
+        map."""
+        x = self.extract_feat(img)
+        out = self._decode_head_forward_test(x, img_metas)
+        return out
+
+    def _decode_head_forward_tes_frozen(self, x, img_metas):
+        """Run forward function and calculate loss for decode head in
+        inference."""
+        seg_logits = self.decode_head_frozen.forward_test(x, img_metas, self.test_cfg)
+        return seg_logits
+    
+    def encode_decode_frozen(self, img, img_metas):
+        """Encode images with backbone and decode into a semantic segmentation
+        map."""
+        x = self.extract_feat_frozen(img)
+        out = self._decode_head_forward_tes_frozen(x, img_metas)
+        return out
+
+    def write_log_entry(self, line):
+        with open(self.train_log_file, 'a') as file:
+            file.write(line)
+
+
     def train_step(self, data_batch, optimizer, **kwargs):
         """The iteration step during training.
 
@@ -220,10 +278,16 @@ class FeatureAdaption(EncoderDecoder):
                 averaging the logs.
         """
 
+        img_metas = data_batch['img_metas'][0]
+
         # Copy backbone once after checkpoint loaded
         if self.initialize_backbone_frozen:
             self.backbone_frozen = copy.deepcopy(self.backbone)
             self.initialize_backbone_frozen = False
+
+            if self.initialize_decode_head_frozen:
+                self.decode_head_frozen = copy.deepcopy(self.decode_head)
+                self.initialize_decode_head_frozen = False
 
         # Run loop until model save point reached
         do_not_save = True
@@ -233,8 +297,10 @@ class FeatureAdaption(EncoderDecoder):
 
                 self.iter_idx += 1
 
-                if self.iter_idx % 1 == 0:
+                if self.iter_idx % 100 == 0:
                     print(f"Iter {self.iter_idx} | Discr. L {np.mean(self.loss_disc_list):.6f} (Acc. {np.mean(self.discr_acc):.2f} %) | Gen. L {np.mean(self.loss_gen_list):.6f} (steps {self.gen_steps}/{self.gen_steps_tot})")
+                    self.write_log_entry(f"{self.iter_idx}, {self.gen_steps_tot}, {np.mean(self.discr_acc):.2f}\n")
+
                     self.gen_steps = 0
 
                 ############################
@@ -242,10 +308,17 @@ class FeatureAdaption(EncoderDecoder):
                 ############################
 
                 self.optimizer_discr.zero_grad()
+                self.optimizer_backbone.zero_grad()
 
                 # Generate model features
-                source_x = self.extract_feat_frozen(source_imgs)[-1]  # (2,512,64,128)
-                target_x = self.extract_feat(target_imgs)[-1]
+                if self.adaption_level == 'backbone':
+                    source_x = self.extract_feat_frozen(source_imgs)[-1]  # (2,512,64,128)
+                    target_x = self.extract_feat(target_imgs)[-1]
+                elif self.adaption_level == 'output':
+                    source_x = self.encode_decode_frozen(source_imgs, img_metas)  # (2,19,128,256)
+                    target_x = self.encode_decode(target_imgs, img_metas)
+                else:
+                    raise ValueError(f"Given feature adaption level not supported ({self.adaption_level})")
 
                 # Discriminator prediction
                 source_pred = self.discr(source_x)  # (2,2,64,128)
@@ -260,7 +333,7 @@ class FeatureAdaption(EncoderDecoder):
                 source_label = torch.ones((N, d1, d2), dtype=torch.long)
                 target_label = torch.zeros((N, d1, d2), dtype=torch.long)
 
-                label = torch.cat((source_label, target_label)).to('cuda')  # (4, 128, 128)
+                label = torch.cat((source_label, target_label)).to('cuda')  # (4, 64, 128)
 
                 # Compute loss
                 loss_discr = self.NLLLoss(F.log_softmax(pred_discr, dim=1), label)
@@ -289,7 +362,12 @@ class FeatureAdaption(EncoderDecoder):
                     self.optimizer_backbone.zero_grad()
 
                     # Generate model features
-                    target_x = self.extract_feat(target_imgs)[-1]
+                    if self.adaption_level == 'backbone':
+                        target_x = self.extract_feat(target_imgs)[-1]
+                    elif self.adaption_level == 'output':
+                        target_x = self.encode_decode(target_imgs, img_metas)
+                    else:
+                        raise ValueError(f"Given feature adaption level not supported ({self.adaption_level})")
 
                     # Discriminator prediction
                     pred_discr = self.discr(target_x)
