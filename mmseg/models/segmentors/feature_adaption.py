@@ -59,8 +59,8 @@ class FeatureAdaptionDataset(Dataset):
         return img
 
 
-class Discriminator(torch.nn.Module):
-    '''
+class FeatDiscriminator(torch.nn.Module):
+    '''Discriminating independent feature vectors using 1x1 convolutions.
     '''
     def __init__(self, input_dim=512, output_dim=2, dropout_p=0.5):
         '''
@@ -78,6 +78,31 @@ class Discriminator(torch.nn.Module):
             nn.Dropout2d(p=dropout_p),
             nn.ReLU(inplace=True),
             nn.Conv2d(dim2, output_dim, 1)
+        )
+
+    def forward(self, x):
+        out = self.D(x)
+        return out
+
+
+class StructDiscriminator(torch.nn.Module):
+    '''Discriminating contextual features using 2D convolutions.
+    '''
+    def __init__(self, input_dim, output_dim=2, ch=64):
+        '''
+        '''
+        super().__init__()
+
+        self.D = nn.Sequential(
+            nn.Conv2d(input_dim, ch, kernel_size=4, stride=2, padding=1),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            nn.Conv2d(ch, ch*2, kernel_size=4, stride=2, padding=1),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            nn.Conv2d(ch*2, ch*4, kernel_size=4, stride=2, padding=1),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            nn.Conv2d(ch*4, ch*8, kernel_size=4, stride=2, padding=1),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            nn.Conv2d(ch*8, output_dim, kernel_size=4, stride=2, padding=1),
         )
 
     def forward(self, x):
@@ -128,6 +153,7 @@ class FeatureAdaption(EncoderDecoder):
         
         self.discr_lr = float(params['discr_lr'])
         self.model_lr = float(params['model_lr'])
+        self.sgd_momentum = float(params['sgd_momentum'])
         self.batch_size = params['batch_size']
         self.cropbox = params['cropbox']  # (512, 1024)
         self.dataset_path_source = params['dataset_path_source']
@@ -136,8 +162,10 @@ class FeatureAdaption(EncoderDecoder):
         self.discr_input_dim = params['discr_input_dim']
         self.save_interval = params['save_interval']
         self.adaption_level = params['adaption_level']
+        self.discr_type = params['discriminator']
         print(f"discr_lr:            {self.discr_lr}")
         print(f"model_lr:            {self.model_lr}")
+        print(f"momentum:            {self.sgd_momentum}")
         print(f"batch_size:          {self.batch_size}")
         print(f"cropbox:             {self.cropbox}")
         print(f"dataset_path_source: {self.dataset_path_source}")
@@ -145,7 +173,8 @@ class FeatureAdaption(EncoderDecoder):
         print(f"train_log_file:      {self.train_log_file}")
         print(f"discr_input_dim:     {self.discr_input_dim}")
         print(f"save_interval:       {self.save_interval}")
-        print(f"adaption_level:      {self.adaption_level}\n")
+        print(f"adaption_level:      {self.adaption_level}")
+        print(f"discriminator:       {self.discr_type}\n")
 
         # Reset training log file
         with open(self.train_log_file, 'w') as file:
@@ -172,7 +201,12 @@ class FeatureAdaption(EncoderDecoder):
         self.backbone_frozen = None  
         self.decode_head_frozen = None
 
-        self.discr = Discriminator(input_dim=self.discr_input_dim, output_dim=2, dropout_p=0.5)
+        if self.discr_type == 'feature':
+            self.discr = FeatDiscriminator(input_dim=self.discr_input_dim, output_dim=2, dropout_p=0.5)
+        elif self.discr_type == 'struct':
+            self.discr = StructDiscriminator(input_dim=self.discr_input_dim, output_dim=2)
+        else:
+            raise Exception(f"Invalid discriminator type: {self.discr_type}")
         self.discr = self.discr.to('cuda')
 
         self.initialize_backbone_frozen = True
@@ -187,11 +221,11 @@ class FeatureAdaption(EncoderDecoder):
 
         # Optimizer for 'backbone_adapt' parameters
         params = [p for p in self.backbone.parameters() if p.requires_grad]
-        self.optimizer_backbone = torch.optim.SGD(params, lr=self.model_lr, weight_decay=0.0005)
+        self.optimizer_backbone = torch.optim.SGD(params, lr=self.model_lr, weight_decay=0.0005, momentum=self.sgd_momentum)
 
         # Optimizer for 'discriminator' parameters
         params = [p for p in self.discr.parameters() if p.requires_grad]
-        self.optimizer_discr = torch.optim.SGD(params, lr=self.discr_lr, weight_decay=0.0005)
+        self.optimizer_discr = torch.optim.SGD(params, lr=self.discr_lr, weight_decay=0.0005, momentum=self.sgd_momentum)
 
         ##########
         #  LOSS

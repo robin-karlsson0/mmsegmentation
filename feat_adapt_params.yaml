@@ -1,5 +1,6 @@
 discr_lr: 1e-4
 model_lr: 1e-4
+sgd_momentum: 0.9
 batch_size: 2
 cropbox: !!python/tuple [512, 1024]
 dataset_path_source: '/media/robin/Data/feat_adapt_dataset/cityscapes'  #'/var/datasets/feat_adapt_dataset/a2d2'
@@ -14,3 +15,7 @@ save_interval: 2000
 # backbone
 # output
 adaption_level: 'output'
+
+# feature
+# struct
+discriminator: 'feature'
