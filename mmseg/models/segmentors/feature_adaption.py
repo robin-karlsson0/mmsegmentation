@@ -354,17 +354,21 @@ class FeatureAdaption(EncoderDecoder):
                 ############################
                 #  OPTIMIZE DISCRIMINATOR
                 ############################
+                for params in self.discr.parameters():
+                    params.requires_grad = True
 
                 self.optimizer_discr.zero_grad()
                 self.optimizer_backbone.zero_grad()
 
                 # Generate model features
                 if self.adaption_level == 'backbone':
-                    source_x = self.extract_feat_frozen(source_imgs)[-1]  # (2,512,64,128)
-                    target_x = self.extract_feat(target_imgs)[-1]
+                    with torch.no_grad():
+                        source_x = self.extract_feat_frozen(source_imgs)[-1]  # (2,512,64,128)
+                        target_x = self.extract_feat(target_imgs)[-1]
                 elif self.adaption_level == 'output':
-                    source_x = self.encode_decode_frozen(source_imgs, img_metas)  # (2,19,128,256)
-                    target_x = self.encode_decode(target_imgs, img_metas)
+                    with torch.no_grad():
+                        source_x = self.encode_decode_frozen(source_imgs, img_metas)  # (2,19,128,256)
+                        target_x = self.encode_decode(target_imgs, img_metas)
                 else:
                     raise ValueError(f"Given feature adaption level not supported ({self.adaption_level})")
 
@@ -390,8 +394,6 @@ class FeatureAdaption(EncoderDecoder):
 
                 loss_discr.backward()
 
-                self.optimizer_discr.step()
-
                 # Compute discriminator accuracy
                 pred_dis = torch.squeeze(pred_discr.max(1)[1])
                 dom_acc = (pred_dis == label).float().mean().item() 
@@ -405,6 +407,9 @@ class FeatureAdaption(EncoderDecoder):
 
                 # Only train generator if discriminator is accurate
                 if np.mean(self.discr_acc) > self.discr_acc_threshold:
+
+                    for params in self.discr.parameters():
+                        params.requires_grad = False
 
                     self.optimizer_discr.zero_grad()
                     self.optimizer_backbone.zero_grad()
@@ -429,15 +434,16 @@ class FeatureAdaption(EncoderDecoder):
 
                     loss_gen.backward()
 
-                    if self.adaption_level == 'backbone':
-                        self.optimizer_backbone.step()
-                    elif self.adaption_level == 'output':
-                        self.optimizer_backbone.step()
-                        self.optimizer_decoder.step()
-
                     self.loss_gen_list.append(loss_gen.item())
                     self.gen_steps += 1
                     self.gen_steps_tot += 1
+                
+                #######################
+                #  OPTIMIZATION STEP
+                #######################
+                self.optimizer_discr.step()
+                self.optimizer_backbone.step()
+                self.optimizer_decoder.step()
                 
                 if self.iter_idx % self.iter_save_interval == 0:
                     do_not_save = False
