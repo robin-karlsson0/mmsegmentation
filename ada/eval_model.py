@@ -136,7 +136,7 @@ if __name__ == "__main__":
     eval_name = args.eval_name
     output_dir = args.output_dir
 
-    if os.isdir(output_dir) == False:
+    if os.path.isdir(output_dir) == False:
         raise FileNotFoundError(f"Output directory does not exists ({output_dir})")
     
     checkpoint_filepath = os.path.join(checkpoint_directory, checkpoint_filename)
