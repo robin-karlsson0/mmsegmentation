@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import argparse
-import os.path as osp
+import os
 import mmcv
 from mmseg.core.evaluation import mean_iou
 from mmcv.runner import load_checkpoint
@@ -14,6 +14,7 @@ from ada.file_io import write_compressed_pickle
 
 CITYSCAPES_NUM_CLASSES = 19
 
+IGNORE_CLASS_LIST = [3, 5, 6, 9, 12, 15, 16]
 
 def init_model(config_filepath, checkpoint_filepath, to_gpu=True):
     '''Initializes a model from a given configuration and checkpoint file.
@@ -38,6 +39,12 @@ def init_model(config_filepath, checkpoint_filepath, to_gpu=True):
     return model
 
 
+def ignore_classes(iou):
+    for ignore_class_idx in IGNORE_CLASS_LIST:
+        iou[ignore_class_idx] = float("NaN")
+    return iou
+
+
 def eval_sample(model, img_path, label_path, num_classes, ignore_index=255):
     '''
     Returns:
@@ -50,6 +57,9 @@ def eval_sample(model, img_path, label_path, num_classes, ignore_index=255):
 
     output = inference_segmentor(model, img)[0]
     _, _, iou = mean_iou(output, label, num_classes, ignore_index)
+
+    iou = ignore_classes(iou)
+    
     miou = np.nanmean(iou)
     return miou, iou
     
@@ -125,8 +135,11 @@ if __name__ == "__main__":
     dataset_name = args.dataset
     eval_name = args.eval_name
     output_dir = args.output_dir
+
+    if os.isdir(output_dir) == False:
+        raise FileNotFoundError(f"Output directory does not exists ({output_dir})")
     
-    checkpoint_filepath = osp.join(checkpoint_directory, checkpoint_filename)
+    checkpoint_filepath = os.path.join(checkpoint_directory, checkpoint_filename)
 
     print(f"Evaluate model\n    {checkpoint_filepath}")
     print(f"On dataset\n    {dataset_name}\n")
