@@ -88,19 +88,23 @@ class FeatDiscriminator(torch.nn.Module):
 class StructDiscriminator(torch.nn.Module):
     '''Discriminating contextual features using 2D convolutions.
     '''
-    def __init__(self, input_dim, output_dim=2, ch=64):
+    def __init__(self, input_dim, output_dim=2, ch=64, dropout_p=0.):
         '''
         '''
         super().__init__()
 
         self.D = nn.Sequential(
             nn.Conv2d(input_dim, ch, kernel_size=4, stride=2, padding=1),
+            nn.Dropout2d(p=dropout_p),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
             nn.Conv2d(ch, ch*2, kernel_size=4, stride=2, padding=1),
+            nn.Dropout2d(p=dropout_p),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
             nn.Conv2d(ch*2, ch*4, kernel_size=4, stride=2, padding=1),
+            nn.Dropout2d(p=dropout_p),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
             nn.Conv2d(ch*4, ch*8, kernel_size=4, stride=2, padding=1),
+            nn.Dropout2d(p=dropout_p),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
             nn.Conv2d(ch*8, output_dim, kernel_size=4, stride=2, padding=1),
         )
@@ -154,7 +158,8 @@ class FeatureAdaption(EncoderDecoder):
         self.discr_lr = float(params['discr_lr'])
         self.model_lr = float(params['model_lr'])
         self.sgd_momentum = float(params['sgd_momentum'])
-        self.batch_size = params['batch_size']
+        self.batch_size = int(params['batch_size'])
+        self.discr_dropout_p = float(params['discr_dropout_p'])
         self.cropbox = params['cropbox']  # (512, 1024)
         self.dataset_path_source = params['dataset_path_source']
         self.dataset_path_target = params['dataset_path_target']
@@ -167,6 +172,7 @@ class FeatureAdaption(EncoderDecoder):
         print(f"model_lr:            {self.model_lr}")
         print(f"momentum:            {self.sgd_momentum}")
         print(f"batch_size:          {self.batch_size}")
+        print(f"discr_dropout_p:     {self.discr_dropout_p}")
         print(f"cropbox:             {self.cropbox}")
         print(f"dataset_path_source: {self.dataset_path_source}")
         print(f"dataset_path_target: {self.dataset_path_target}")
@@ -202,9 +208,9 @@ class FeatureAdaption(EncoderDecoder):
         self.decode_head_frozen = None
 
         if self.discr_type == 'feature':
-            self.discr = FeatDiscriminator(input_dim=self.discr_input_dim, output_dim=2, dropout_p=0.5)
+            self.discr = FeatDiscriminator(input_dim=self.discr_input_dim, output_dim=2, dropout_p=self.discr_dropout_p)
         elif self.discr_type == 'struct':
-            self.discr = StructDiscriminator(input_dim=self.discr_input_dim, output_dim=2)
+            self.discr = StructDiscriminator(input_dim=self.discr_input_dim, output_dim=2, dropout_p=self.discr_dropout_p)
         else:
             raise Exception(f"Invalid discriminator type: {self.discr_type}")
         self.discr = self.discr.to('cuda')
@@ -219,9 +225,13 @@ class FeatureAdaption(EncoderDecoder):
         #  OPTIMIZERS
         ################
 
-        # Optimizer for 'backbone_adapt' parameters
+        # Optimizer for 'backbone' parameters
         params = [p for p in self.backbone.parameters() if p.requires_grad]
         self.optimizer_backbone = torch.optim.SGD(params, lr=self.model_lr, weight_decay=0.0005, momentum=self.sgd_momentum)
+
+        # Optimizer for 'decoder' parameters
+        params = [p for p in self.decode_head.parameters() if p.requires_grad]
+        self.optimizer_decoder = torch.optim.SGD(params, lr=self.model_lr, weight_decay=0.0005, momentum=self.sgd_momentum)
 
         # Optimizer for 'discriminator' parameters
         params = [p for p in self.discr.parameters() if p.requires_grad]
@@ -419,7 +429,11 @@ class FeatureAdaption(EncoderDecoder):
 
                     loss_gen.backward()
 
-                    self.optimizer_backbone.step()
+                    if self.adaption_level == 'backbone':
+                        self.optimizer_backbone.step()
+                    elif self.adaption_level == 'output':
+                        self.optimizer_backbone.step()
+                        self.optimizer_decoder.step()
 
                     self.loss_gen_list.append(loss_gen.item())
                     self.gen_steps += 1
