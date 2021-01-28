@@ -328,13 +328,21 @@ class FeatureAdaption(EncoderDecoder):
 
         img_metas = data_batch['img_metas'][0]
 
+        #######################################################################
+        #  Be careful about what gradients that gets accumulated and updated
+        #######################################################################
+
         # Copy backbone once after checkpoint loaded
         if self.initialize_backbone_frozen:
             self.backbone_frozen = copy.deepcopy(self.backbone)
+            for params in self.backbone_frozen.parameters():
+                params.requires_grad = False
             self.initialize_backbone_frozen = False
 
             if self.initialize_decode_head_frozen:
                 self.decode_head_frozen = copy.deepcopy(self.decode_head)
+                for params in self.decode_head_frozen.parameters():
+                    params.requires_grad = False
                 self.initialize_decode_head_frozen = False
 
         # Run loop until model save point reached
@@ -351,14 +359,22 @@ class FeatureAdaption(EncoderDecoder):
 
                     self.gen_steps = 0
 
+                self.optimizer_discr.zero_grad()
+                self.optimizer_backbone.zero_grad()
+                self.optimizer_decoder.zero_grad()
+
                 ############################
                 #  OPTIMIZE DISCRIMINATOR
                 ############################
+                # Backbone grad: X
+                # Decoder grad:  X
+                # Discr. grad:   O
+                for params in self.backbone.parameters():
+                    params.requires_grad = False
+                for params in self.decode_head.parameters():
+                    params.requires_grad = False
                 for params in self.discr.parameters():
                     params.requires_grad = True
-
-                self.optimizer_discr.zero_grad()
-                self.optimizer_backbone.zero_grad()
 
                 # Generate model features
                 if self.adaption_level == 'backbone':
@@ -401,18 +417,27 @@ class FeatureAdaption(EncoderDecoder):
 
                 self.loss_disc_list.append(loss_discr.item())
 
-                ########################
-                #  OPTIMIZE GENERATOR
-                ########################
+                
 
                 # Only train generator if discriminator is accurate
                 if np.mean(self.discr_acc) > self.discr_acc_threshold:
 
+                    ########################
+                    #  OPTIMIZE GENERATOR
+                    ########################
+                    # Backbone grad: O
+                    # Decoder grad:  O
+                    # Discr. grad:   X
+                    for params in self.backbone.parameters():
+                        params.requires_grad = True
+                    for params in self.decode_head.parameters():
+                        params.requires_grad = True
                     for params in self.discr.parameters():
                         params.requires_grad = False
 
                     self.optimizer_discr.zero_grad()
                     self.optimizer_backbone.zero_grad()
+                    self.optimizer_decoder.zero_grad()
 
                     # Generate model features
                     if self.adaption_level == 'backbone':
