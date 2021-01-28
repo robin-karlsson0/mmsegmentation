@@ -3,9 +3,10 @@ model_lr: 1e-4
 sgd_momentum: 0.9
 batch_size: 2
 discr_dropout_p: 0
-cropbox: !!python/tuple [512, 1024]
-dataset_path_source: '/media/robin/Data/feat_adapt_dataset/cityscapes'  #'/var/datasets/feat_adapt_dataset/a2d2'
-dataset_path_target: '/media/robin/Data/feat_adapt_dataset/a2d2'  #'/var/datasets/feat_adapt_dataset/cityscapes'
+discr_acc_threshold: 60.
+cropbox: !!python/tuple [480, 1204]
+dataset_path_source: '/media/robin/Data/feat_adapt_dataset/a2d2'  #'/var/datasets/feat_adapt_dataset/a2d2'
+dataset_path_target: '/media/robin/Data/feat_adapt_dataset/cityscapes'  #'/var/datasets/feat_adapt_dataset/cityscapes'
 train_log_file: 'train_log.txt'
 # Backbone features: 512
 # Output features: 19

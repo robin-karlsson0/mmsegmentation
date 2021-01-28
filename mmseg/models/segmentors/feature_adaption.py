@@ -160,6 +160,7 @@ class FeatureAdaption(EncoderDecoder):
         self.sgd_momentum = float(params['sgd_momentum'])
         self.batch_size = int(params['batch_size'])
         self.discr_dropout_p = float(params['discr_dropout_p'])
+        self.discr_acc_threshold = float(params['discr_acc_threshold'])
         self.cropbox = params['cropbox']  # (512, 1024)
         self.dataset_path_source = params['dataset_path_source']
         self.dataset_path_target = params['dataset_path_target']
@@ -173,6 +174,7 @@ class FeatureAdaption(EncoderDecoder):
         print(f"momentum:            {self.sgd_momentum}")
         print(f"batch_size:          {self.batch_size}")
         print(f"discr_dropout_p:     {self.discr_dropout_p}")
+        print(f"discr_acc_threshold: {self.discr_acc_threshold}")
         print(f"cropbox:             {self.cropbox}")
         print(f"dataset_path_source: {self.dataset_path_source}")
         print(f"dataset_path_target: {self.dataset_path_target}")
@@ -251,8 +253,6 @@ class FeatureAdaption(EncoderDecoder):
         self.lambda_discr = 1.
         self.lambda_gen = 0.1
 
-        self.discr_acc_threshold = 60
-
         # Optimization variables
         self.iter_idx = 0
         self.gen_steps = 0
@@ -264,8 +264,6 @@ class FeatureAdaption(EncoderDecoder):
         # So that generator is not optimized by chance
         for _ in range(100):
             self.discr_acc.append(0.)
-
-        self.iter_save_interval = 2000
 
     def extract_feat_frozen(self, img):
         """Extract features from images."""
@@ -417,8 +415,6 @@ class FeatureAdaption(EncoderDecoder):
 
                 self.loss_disc_list.append(loss_discr.item())
 
-                
-
                 # Only train generator if discriminator is accurate
                 if np.mean(self.discr_acc) > self.discr_acc_threshold:
 
@@ -470,7 +466,7 @@ class FeatureAdaption(EncoderDecoder):
                 self.optimizer_backbone.step()
                 self.optimizer_decoder.step()
                 
-                if self.iter_idx % self.iter_save_interval == 0:
+                if self.iter_idx % self.save_interval == 0:
                     do_not_save = False
                     break
 
