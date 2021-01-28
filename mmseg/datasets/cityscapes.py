@@ -32,7 +32,8 @@ class CityscapesDataset(CustomDataset):
     def __init__(self, **kwargs):
         super(CityscapesDataset, self).__init__(
             img_suffix='_leftImg8bit.png',
-            seg_map_suffix='_gtFine_labelTrainIds.png',
+            #seg_map_suffix='_gtFine_labelTrainIds.png',
+            seg_map_suffix='_gtFine_labelTrainIds_mod.png',
             **kwargs)
 
     @staticmethod
@@ -155,6 +156,7 @@ class CityscapesDataset(CustomDataset):
                 self._evaluate_cityscapes(results, logger, imgfile_prefix))
             metrics.remove('cityscapes')
         if len(metrics) > 0:
+            # '--eval mIoU' comes here
             eval_results.update(
                 super(CityscapesDataset,
                       self).evaluate(results, metrics, logger, efficient_test))
