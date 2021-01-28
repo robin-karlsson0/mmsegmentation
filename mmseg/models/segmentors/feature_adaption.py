@@ -18,7 +18,7 @@ import os
 import copy
 from collections import deque
 import yaml
-
+import pickle
 
 class FeatureAdaptionDataset(Dataset):
 
@@ -114,6 +114,41 @@ class StructDiscriminator(torch.nn.Module):
         return out
 
 
+def freeze_batchnorm(module):
+    '''Makes the BN running statisitcs of a module static.
+    '''
+    for module in module.modules():
+        if isinstance(module, nn.BatchNorm2d):
+            module.momentum=0.
+            module.weight.requires_grad = False
+            module.bias.requires_grad = False
+            module.eval()
+
+
+def save_model(backbone, decode_head, discr, iter_idx, path):
+    file_path = os.path.join(path, f'feat_adapt_iter_{iter_idx}.pkl')
+    model_dict = {'backbone': backbone.state_dict(),
+                  'decode_head': decode_head.state_dict(),
+                  'discr': discr.state_dict()}
+
+    with open(file_path, 'wb') as file:
+        pickle.dump(model_dict, file, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def load_model(backbone, decode_head, discr, iter_idx, path):
+    '''
+    How to use:
+        load_model(self.backbone, self.decode_head, self.discr, ...)
+    '''
+    file_path = os.path.join(path, f'feat_adapt_iter_{iter_idx}.pkl')
+    with open(file_path, 'rb') as file:
+        checkpoint = pickle.load(file)
+    
+    backbone.load_state_dict(checkpoint['backbone'])
+    decode_head.load_state_dict(checkpoint['decode_head'])
+    discr.load_state_dict(checkpoint['discr'])
+
+
 @SEGMENTORS.register_module()
 class FeatureAdaption(EncoderDecoder):
     """Encoder Decoder segmentors.
@@ -166,9 +201,11 @@ class FeatureAdaption(EncoderDecoder):
         self.dataset_path_target = params['dataset_path_target']
         self.train_log_file = params['train_log_file']
         self.discr_input_dim = params['discr_input_dim']
+        self.save_dir = params['save_dir']
         self.save_interval = params['save_interval']
         self.adaption_level = params['adaption_level']
         self.discr_type = params['discriminator']
+        self.print_interval = params['print_interval']
         print(f"discr_lr:            {self.discr_lr}")
         print(f"model_lr:            {self.model_lr}")
         print(f"momentum:            {self.sgd_momentum}")
@@ -180,9 +217,11 @@ class FeatureAdaption(EncoderDecoder):
         print(f"dataset_path_target: {self.dataset_path_target}")
         print(f"train_log_file:      {self.train_log_file}")
         print(f"discr_input_dim:     {self.discr_input_dim}")
+        print(f"save_dir:            {self.save_dir}")
         print(f"save_interval:       {self.save_interval}")
         print(f"adaption_level:      {self.adaption_level}")
         print(f"discriminator:       {self.discr_type}\n")
+        print(f"print_interval:      {self.print_interval}\n")
 
         # Reset training log file
         with open(self.train_log_file, 'w') as file:
@@ -222,6 +261,10 @@ class FeatureAdaption(EncoderDecoder):
             self.initialize_decode_head_frozen = True
         else:
             self.initialize_decode_head_frozen = False
+
+        # Freeze batchnorm statistics
+        freeze_batchnorm(self.backbone)
+        freeze_batchnorm(self.decode_head)
 
         ################
         #  OPTIMIZERS
@@ -263,7 +306,7 @@ class FeatureAdaption(EncoderDecoder):
 
         # So that generator is not optimized by chance
         for _ in range(100):
-            self.discr_acc.append(0.)
+            self.discr_acc.append(50.)
 
     def extract_feat_frozen(self, img):
         """Extract features from images."""
@@ -343,15 +386,14 @@ class FeatureAdaption(EncoderDecoder):
                     params.requires_grad = False
                 self.initialize_decode_head_frozen = False
 
-        # Run loop until model save point reached
-        do_not_save = True
-        while do_not_save:
+        # Run loop until finished
+        while True:
 
             for source_imgs, target_imgs in zip(self.dataloader_source, self.dataloader_target):
 
                 self.iter_idx += 1
 
-                if self.iter_idx % 100 == 0:
+                if self.iter_idx % self.print_interval == 0:
                     print(f"Iter {self.iter_idx} | Discr. L {np.mean(self.loss_disc_list):.6f} (Acc. {np.mean(self.discr_acc):.2f} %) | Gen. L {np.mean(self.loss_gen_list):.6f} (steps {self.gen_steps}/{self.gen_steps_tot})")
                     self.write_log_entry(f"{self.iter_idx}, {self.gen_steps_tot}, {np.mean(self.discr_acc):.2f}\n")
 
@@ -431,10 +473,6 @@ class FeatureAdaption(EncoderDecoder):
                     for params in self.discr.parameters():
                         params.requires_grad = False
 
-                    self.optimizer_discr.zero_grad()
-                    self.optimizer_backbone.zero_grad()
-                    self.optimizer_decoder.zero_grad()
-
                     # Generate model features
                     if self.adaption_level == 'backbone':
                         target_x = self.extract_feat(target_imgs)[-1]
@@ -466,9 +504,16 @@ class FeatureAdaption(EncoderDecoder):
                 self.optimizer_backbone.step()
                 self.optimizer_decoder.step()
                 
+                #################
+                #  SAVE MODELS
+                #################
                 if self.iter_idx % self.save_interval == 0:
-                    do_not_save = False
-                    break
+                    print('Saving model')
+                    save_model(self.backbone, self.decode_head, self.discr, 
+                               self.iter_idx, self.save_dir)
+
+        # Never again go beyond this point ...
+        exit()
 
         losses = self(**data_batch)
         loss, log_vars = self._parse_losses(losses)
@@ -482,3 +527,32 @@ class FeatureAdaption(EncoderDecoder):
             num_samples=len(data_batch['img'].data))
 
         return outputs
+
+
+    def simple_test(self, img, img_meta, rescale=True):
+        """Simple test with single image.
+        
+        Modified to replace modules with stored adapted modules.
+
+        NOTE: Assumes that the intended iteration index is stored in a text file
+        located in the root directory.
+        
+        """
+
+        # Load adapted modules
+        with open("iter_idx.txt", 'r') as file:
+            load_idx = int(file.readline())
+        if load_idx >= 0:
+            print("\nLoading adapted model iteration {load_idx}")
+            load_model(self.backbone, self.decode_head, self.discr, load_idx, self.save_dir)
+
+        seg_logit = self.inference(img, img_meta, rescale)
+        seg_pred = seg_logit.argmax(dim=1)
+        if torch.onnx.is_in_onnx_export():
+            # our inference backend only support 4D output
+            seg_pred = seg_pred.unsqueeze(0)
+            return seg_pred
+        seg_pred = seg_pred.cpu().numpy()
+        # unravel batch dim
+        seg_pred = list(seg_pred)
+        return seg_pred
