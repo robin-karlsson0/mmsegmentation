@@ -160,9 +160,9 @@ class SourceDatasetA2D2(SemanticSegDataset):
             img = np.array(img)
             # (H,W,C) --> (C,H,W)
             img = np.transpose(img, (2,0,1))
-        
-        img = torch.from_numpy(np.ascontiguousarray(img ,dtype=np.float))
-        ann = torch.from_numpy(np.ascontiguousarray(ann ,dtype=np.float))
+
+        img = torch.from_numpy(np.ascontiguousarray(img ,dtype=np.float32))
+        ann = torch.from_numpy(np.ascontiguousarray(ann ,dtype=np.long))
 
         img = torch.div(img, 255.)
         img = self.normalize(img)
@@ -239,7 +239,7 @@ class FeatureAdaptionDatasetCityscapes(SemanticSegDataset):
             # (H,W,C) --> (C,H,W)
             img = np.transpose(img, (2,0,1))
 
-        img = torch.from_numpy(np.ascontiguousarray(img ,dtype=np.float))
+        img = torch.from_numpy(np.ascontiguousarray(img , dtype=np.float32))
         img = torch.div(img, 255.)
         img = self.normalize(img)
 
@@ -275,7 +275,7 @@ class FeatDiscriminator(torch.nn.Module):
 class StructDiscriminator(torch.nn.Module):
     '''Discriminating contextual features using 2D convolutions.
     '''
-    def __init__(self, input_dim, output_dim=2, ch=64, dropout_p=0.):
+    def __init__(self, input_dim, output_dim=1, ch=64, dropout_p=0.):
         '''
         '''
         super().__init__()
@@ -383,6 +383,9 @@ class FeatureAdaption(EncoderDecoder):
         self.batch_size = int(params['batch_size'])
         self.discr_dropout_p = float(params['discr_dropout_p'])
         self.discr_acc_threshold = float(params['discr_acc_threshold'])
+        self.lambda_seg = float(params['lambda_seg'])
+        self.lambda_consis = float(params['lambda_consis'])
+        self.lambda_discr = float(params['lambda_discr'])
         self.cropbox = params['cropbox']  # (512, 1024)
         self.source_subset = params['source_subset']
         self.dataset_path_source = params['dataset_path_source']
@@ -393,15 +396,19 @@ class FeatureAdaption(EncoderDecoder):
         self.save_interval = params['save_interval']
         self.adaption_level = params['adaption_level']
         self.discr_type = params['discriminator']
-        self.print_interval = params['print_interval']
+        self.print_interval = int(params['print_interval'])
+        self.num_workers = int(params['num_workers'])
         print(f"discr_lr:            {self.discr_lr}")
         print(f"model_lr:            {self.model_lr}")
         print(f"momentum:            {self.sgd_momentum}")
         print(f"batch_size:          {self.batch_size}")
         print(f"discr_dropout_p:     {self.discr_dropout_p}")
         print(f"discr_acc_threshold: {self.discr_acc_threshold}")
+        print(f"lambda_seg:          {self.lambda_seg}")
+        print(f"lambda_consis:       {self.lambda_consis}")
+        print(f"lambda_discr:        {self.lambda_discr}")
         print(f"cropbox:             {self.cropbox}")
-        print(f"source_subset:      {self.source_subset}")
+        print(f"source_subset:       {self.source_subset}")
         print(f"dataset_path_source: {self.dataset_path_source}")
         print(f"dataset_path_target: {self.dataset_path_target}")
         print(f"train_log_file:      {self.train_log_file}")
@@ -409,8 +416,9 @@ class FeatureAdaption(EncoderDecoder):
         print(f"save_dir:            {self.save_dir}")
         print(f"save_interval:       {self.save_interval}")
         print(f"adaption_level:      {self.adaption_level}")
-        print(f"discriminator:       {self.discr_type}\n")
-        print(f"print_interval:      {self.print_interval}\n")
+        print(f"discriminator:       {self.discr_type}")
+        print(f"print_interval:      {self.print_interval}")
+        print(f"num_workers:         {self.num_workers}\n")
 
         # Reset training log file
         with open(self.train_log_file, 'w') as file:
@@ -425,10 +433,10 @@ class FeatureAdaption(EncoderDecoder):
         self.dataset_source_adapted = SourceDatasetA2D2(self.dataset_path_source, self.source_subset, self.cropbox, target_adaption_path=self.dataset_path_target)
         self.dataset_target_adapted = FeatureAdaptionDatasetCityscapes(self.dataset_path_target, self.cropbox, target_adaption_path=self.dataset_path_source)
         # Dataloaders
-        self.dataloader_source = DataLoader(self.dataset_source, batch_size=self.batch_size, shuffle=True)
-        self.dataloader_target = DataLoader(self.dataset_target, batch_size=self.batch_size, shuffle=True)
-        self.dataloader_source_adapted = DataLoader(self.dataset_source_adapted, batch_size=self.batch_size, shuffle=True)
-        self.dataloader_target_adapted = DataLoader(self.dataset_target_adapted, batch_size=self.batch_size, shuffle=True)
+        self.dataloader_source = DataLoader(self.dataset_source, batch_size=self.batch_size, shuffle=True, pin_memory=True, num_workers=self.num_workers)
+        self.dataloader_target = DataLoader(self.dataset_target, batch_size=self.batch_size, shuffle=True, pin_memory=True, num_workers=self.num_workers)
+        self.dataloader_source_adapted = DataLoader(self.dataset_source_adapted, batch_size=self.batch_size, shuffle=True, pin_memory=True, num_workers=self.num_workers)
+        self.dataloader_target_adapted = DataLoader(self.dataset_target_adapted, batch_size=self.batch_size, shuffle=True, pin_memory=True, num_workers=self.num_workers)
         # Dataloader iterators
         # Usage: _, batch = iter.__next()
         self.dataloader_source_iter = enumerate(self.dataloader_source)
@@ -450,7 +458,7 @@ class FeatureAdaption(EncoderDecoder):
         if self.discr_type == 'feature':
             self.discr = FeatDiscriminator(input_dim=self.discr_input_dim, output_dim=2, dropout_p=self.discr_dropout_p)
         elif self.discr_type == 'struct':
-            self.discr = StructDiscriminator(input_dim=self.discr_input_dim, output_dim=2, dropout_p=self.discr_dropout_p)
+            self.discr = StructDiscriminator(input_dim=self.discr_input_dim, output_dim=1, dropout_p=self.discr_dropout_p)
         else:
             raise Exception(f"Invalid discriminator type: {self.discr_type}")
         self.discr = self.discr.to('cuda')
@@ -481,11 +489,12 @@ class FeatureAdaption(EncoderDecoder):
         params = [p for p in self.discr.parameters() if p.requires_grad]
         self.optimizer_discr = torch.optim.SGD(params, lr=self.discr_lr, weight_decay=0.0005, momentum=self.sgd_momentum)
 
-        ##########
-        #  LOSS
-        ##########
-
-        self.NLLLoss = torch.nn.NLLLoss(size_average=True, ignore_index=255)
+        #####################
+        #  LOSS CRITERIONS
+        #####################
+        self.CrossEntropyLoss = nn.CrossEntropyLoss(ignore_index=255)
+        self.KLDivLoss = nn.KLDivLoss()
+        self.BCELoss = nn.BCEWithLogitsLoss()
 
         ################
         #  PARAMETERS
@@ -499,13 +508,17 @@ class FeatureAdaption(EncoderDecoder):
         self.iter_idx = 0
         self.gen_steps = 0
         self.gen_steps_tot = 0
-        self.loss_disc_list = deque(maxlen=100)
-        self.loss_gen_list = deque(maxlen=100)
-        self.discr_acc = deque(maxlen=100)
+        self.loss_seg_list = deque(maxlen=100)
+        self.loss_consis_list = deque(maxlen=100)
+        self.loss_adv_feat_list = deque(maxlen=100)
+        self.loss_discr_list = deque(maxlen=100)
+        self.discr_acc_list = deque(maxlen=100)
 
         # So that generator is not optimized by chance
         for _ in range(100):
-            self.discr_acc.append(0.)
+            self.discr_acc_list.append(0.)
+
+        
 
     def extract_feat_frozen(self, img):
         """Extract features from images."""
@@ -521,7 +534,7 @@ class FeatureAdaption(EncoderDecoder):
         out = self._decode_head_forward_test(x, img_metas)
         return out
 
-    def _decode_head_forward_tes_frozen(self, x, img_metas):
+    def _decode_head_forward_test_frozen(self, x, img_metas):
         """Run forward function and calculate loss for decode head in
         inference."""
         seg_logits = self.decode_head_frozen.forward_test(x, img_metas, self.test_cfg)
@@ -531,13 +544,53 @@ class FeatureAdaption(EncoderDecoder):
         """Encode images with backbone and decode into a semantic segmentation
         map."""
         x = self.extract_feat_frozen(img)
-        out = self._decode_head_forward_tes_frozen(x, img_metas)
+        out = self._decode_head_forward_test_frozen(x, img_metas)
         return out
 
     def write_log_entry(self, line):
         with open(self.train_log_file, 'a') as file:
             file.write(line)
 
+    @staticmethod
+    def _list_batch2tensor(list_batch):
+        '''Transforms [tensor1, ..., tensorN] --> tensor (N, C, H, W)
+        '''
+        N = len(list_batch)
+        H = list_batch[0].shape[1]
+        W = list_batch[0].shape[2]
+        tensor = torch.zeros((N, 3, H, W))
+        for n in range(N):
+            tensor[n] = list_batch[n]
+        
+        return tensor
+
+    def model_forward_source(self, imgs, img_metas):
+        '''
+        Args:
+            imgs: Tensor w. dim (N, C, H, W)
+        '''
+        if self.adaption_level == 'backbone':
+            source_x = self.extract_feat_frozen(imgs)[-1]  # (2,512,64,128)
+        elif self.adaption_level == 'output':
+            source_x = self.encode_decode_frozen(imgs, img_metas)  # (2,19,128,256)
+        else:
+            raise ValueError(f"Given feature adaption level not supported ({self.adaption_level})")
+
+        return source_x
+
+    def model_forward_target(self, imgs, img_metas):
+        '''
+        Args:
+            imgs: Tensor w. dim (N, C, H, W)
+        '''
+        if self.adaption_level == 'backbone':
+            target_x = self.extract_feat(imgs)[-1]
+        elif self.adaption_level == 'output':
+            target_x = self.encode_decode(imgs, img_metas)
+        else:
+            raise ValueError(f"Given feature adaption level not supported ({self.adaption_level})")
+
+        return target_x
 
     def train_step(self, data_batch, optimizer, **kwargs):
         """The iteration step during training.
@@ -591,27 +644,27 @@ class FeatureAdaption(EncoderDecoder):
             #_, batch_source = self.dataloader_source_iter.__next__()
             #_, batch_target = self.dataloader_target_iter.__next__()
             #_, batch_source_adapted = self.dataloader_source_adapted_iter.__next__()
-            _, batch_target_adapted = self.dataloader_target_adapted_iter.__next__()
-
-            #print(len(batch_source_adapted))
-            #img = batch_source_adapted[0]
-            #label = batch_source_adapted[1]
-
-            print(len(batch_target_adapted))
-            img = batch_target_adapted[0]
-
-            print(img.shape)
-            #print(label.shape)
-
-            #plt.subplot(1,2,1)
-            plt.imshow(np.transpose(img, (1,2,0))[:, :, [2, 1, 0]].numpy())
-            #plt.subplot(1,2,2)
-            #plt.imshow(label[0].numpy())
-            plt.show()
-            
-            exit()
+            #_, batch_target_adapted = self.dataloader_target_adapted_iter.__next__()
 
             self.iter_idx += 1
+
+            if self.iter_idx % self.print_interval == 0:
+                seg_mean = np.mean(self.loss_seg_list)
+                consis_mean = np.mean(self.loss_consis_list)
+                adv_feat_mean = np.mean(self.loss_adv_feat_list)
+                discr_mean = np.mean(self.loss_discr_list)
+                print(f"Iter {self.iter_idx} | \
+                        Seg {seg_mean:.3f} | \
+                        Consis {consis_mean:.3f}| \
+                        Adv. feat {adv_feat_mean:.3f} | \
+                        Discr {discr_mean:.3f}")
+                self.write_log_entry(f"{self.iter_idx}, {seg_mean:.6f}, {consis_mean:.6f}, {adv_feat_mean:.6f}, {discr_mean:.6f}\n")        
+                
+                #self.gen_steps = 0
+            
+            self.optimizer_discr.zero_grad()
+            self.optimizer_backbone.zero_grad()
+            self.optimizer_decoder.zero_grad()
 
             # Learning gradients switch
             #     Backbone grad: O
@@ -625,18 +678,80 @@ class FeatureAdaption(EncoderDecoder):
                 params.requires_grad = False
 
             ##################################
-            #  1: Adapted source label loss
+            #  1: Supervised label loss
             ##################################
-            _, batch_source = self.dataloader_source_iter.__next__()
-            
+            # Output <-- target_model(adapted_source_img)
+            # should correspond to source label
 
+            _, batch_source_adapted = self.dataloader_source_adapted_iter.__next__()
+            imgs_source_adapted = batch_source_adapted[0].to('cuda')
+            labels_source_adapted = batch_source_adapted[1].to('cuda')
+
+            # Adapted source samples w. Target model
+            out_source_adapted_target = self.model_forward_target(imgs_source_adapted, img_metas)
+            out_source_adapted_target_resize = resize(input=out_source_adapted_target, size=imgs_source_adapted.shape[2:], mode='bilinear', align_corners=self.align_corners)
+
+            loss = self.CrossEntropyLoss(out_source_adapted_target_resize, labels_source_adapted)
+            loss = self.lambda_seg * loss
+            loss.backward(retain_graph=True)
+            self.loss_seg_list.append(loss.item())
+            
             ################################
             #  2. Target consistency loss
             ################################
+            # Output <-- target_model(target_img)
+            # Output <-- source_model(adapted_target_img)
+            # should be the same
+
+            _, batch_target = self.dataloader_target_iter.__next__()
+            _, batch_target_adapted = self.dataloader_target_adapted_iter.__next__()
+
+            # Unpack 'list batch' --> image tensors
+            imgs_target = self._list_batch2tensor(batch_target)#.to('cuda')
+            imgs_target_adapted = self._list_batch2tensor(batch_target_adapted)#.to('cuda')
+
+            imgs_target = imgs_target.to('cuda')
+            imgs_target_adapted = imgs_target_adapted.to('cuda')
+
+            # 'Target' output
+            out_target = self.model_forward_target(imgs_target, img_metas)
+            out_target_resize = resize(input=out_target, size=imgs_target.shape[2:], mode='bilinear', align_corners=self.align_corners)
+            out_target_prob = F.softmax(out_target_resize, dim=1)
+            out_target_problog = F.log_softmax(out_target_resize, dim=1)
+
+            # 'Adapted target' output
+            out_target_adapted = self.model_forward_source(imgs_target_adapted, img_metas)
+            out_target_adapted_resize = resize(input=out_target_adapted, size=imgs_target.shape[2:], mode='bilinear', align_corners=self.align_corners)
+            out_target_adapted_prob = F.softmax(out_target_adapted_resize, dim=1)
+            out_target_adapted_problog = F.log_softmax(out_target_adapted_resize, dim=1)
+
+            loss = self.KLDivLoss(out_target_problog, out_target_adapted_prob) + self.KLDivLoss(out_target_adapted_problog, out_target_prob)
+            loss = self.lambda_consis * loss
+            loss.backward(retain_graph=True)
+            self.loss_consis_list.append(loss.item())
 
             #############################
             #  3. Adapt model features
             #############################
+            # Train target model to make discr. missclasify target as source
+
+            # Only train generator if discriminator is accurate <-- ???????
+            if np.mean(self.discr_acc_list) > self.discr_acc_threshold:
+
+                # Discriminator prediction
+                target_pred = self.discr(out_target)
+
+                # Dimensions for label
+                N, _, d1, d2 = target_pred.shape
+
+                # Discriminator label
+                # NOTE: Reverse labels to train model to fool discriminator
+                source_label = torch.ones((N, 1, d1, d2), dtype=torch.float).to('cuda')
+
+                loss = self.BCELoss(target_pred, source_label)
+                loss = self.lambda_discr * loss
+                loss.backward(retain_graph=True)
+                self.loss_adv_feat_list.append(loss.item())
 
             # Learning gradients switch
             #     Backbone grad: X
@@ -652,133 +767,61 @@ class FeatureAdaption(EncoderDecoder):
             ############################
             #  4. Train discriminator
             ############################
-            
+            # Train discr. to correctly classify source and target features
 
-            
+            out_source_adapted = self.model_forward_source(imgs_source_adapted, img_metas)
 
-
-
-
-            if self.iter_idx % self.print_interval == 0:
-                print(f"Iter {self.iter_idx} | Discr. L {np.mean(self.loss_disc_list):.6f} (Acc. {np.mean(self.discr_acc):.2f} %) | Gen. L {np.mean(self.loss_gen_list):.6f} (steps {self.gen_steps}/{self.gen_steps_tot})")
-                self.write_log_entry(f"{self.iter_idx}, {self.gen_steps_tot}, {np.mean(self.discr_acc):.2f}\n")
-
-                self.gen_steps = 0
-
-            self.optimizer_discr.zero_grad()
-            self.optimizer_backbone.zero_grad()
-            self.optimizer_decoder.zero_grad()
-
-            ############################
-            #  OPTIMIZE DISCRIMINATOR
-            ############################
-            # Backbone grad: X
-            # Decoder grad:  X
-            # Discr. grad:   O
-            for params in self.backbone.parameters():
-                params.requires_grad = False
-            for params in self.decode_head.parameters():
-                params.requires_grad = False
-            for params in self.discr.parameters():
-                params.requires_grad = True
-
-            # Generate model features
-            if self.adaption_level == 'backbone':
-                with torch.no_grad():
-                    source_x = self.extract_feat_frozen(source_imgs)[-1]  # (2,512,64,128)
-                    target_x = self.extract_feat(target_imgs)[-1]
-            elif self.adaption_level == 'output':
-                with torch.no_grad():
-                    source_x = self.encode_decode_frozen(source_imgs, img_metas)  # (2,19,128,256)
-                    target_x = self.encode_decode(target_imgs, img_metas)
-            else:
-                raise ValueError(f"Given feature adaption level not supported ({self.adaption_level})")
+            out_source_adapted = out_source_adapted.detach()
+            out_target = out_target.detach()
 
             # Discriminator prediction
-            source_pred = self.discr(source_x)  # (2,2,64,128)
-            target_pred = self.discr(target_x)
-
+            source_pred = self.discr(out_source_adapted)  # (2,1,3,3)
+            target_pred = self.discr(out_target)
             pred_discr = torch.cat((source_pred, target_pred))
 
             # Dimensions for label
             N, _, d1, d2 = source_pred.shape
 
             # Discriminator label
-            source_label = torch.ones((N, d1, d2), dtype=torch.long)
-            target_label = torch.zeros((N, d1, d2), dtype=torch.long)
+            source_label = torch.ones((N, 1, d1, d2), dtype=torch.float)
+            target_label = torch.zeros((N, 1, d1, d2), dtype=torch.float)
+            label = torch.cat((source_label, target_label)).to('cuda')  # (4,1,3,3)
 
-            label = torch.cat((source_label, target_label)).to('cuda')  # (4, 64, 128)
+            loss = self.BCELoss(pred_discr, label)
+            #loss = self.lambda_discr * loss  <-- Isolated module ==> no scaled loss???
 
-            # Compute loss
-            loss_discr = self.NLLLoss(F.log_softmax(pred_discr, dim=1), label)
-
-            loss_discr = self.lambda_discr * loss_discr
-
-            loss_discr.backward()
+            loss.backward(retain_graph=True)
+            self.loss_discr_list.append(loss.item())
 
             # Compute discriminator accuracy
             pred_dis = torch.squeeze(pred_discr.max(1)[1])
             dom_acc = (pred_dis == label).float().mean().item() 
-            self.discr_acc.append(dom_acc * 100.)
+            self.discr_acc_list.append(dom_acc * 100.)
 
-            self.loss_disc_list.append(loss_discr.item())
+            #######################
+            #  OPTIMIZATION STEP
+            #######################
+            self.optimizer_discr.step()
+            self.optimizer_backbone.step()
+            self.optimizer_decoder.step()
+            
+            #################
+            #  SAVE MODELS
+            #################
+            if self.iter_idx % self.save_interval == 0:
+                print('Saving model')
+                save_model(self.backbone, self.decode_head, self.discr, 
+                           self.iter_idx, self.save_dir)
 
-            # Only train generator if discriminator is accurate
-            if np.mean(self.discr_acc) > self.discr_acc_threshold:
+            # Reset iterators when cycled through
+            if self.iter_idx % len(self.dataloader_source_adapted) == 0:
+                self.dataloader_source_adapted_iter = enumerate(self.dataloader_source_adapted)    
+            if self.iter_idx % len(self.dataloader_target) == 0:
+                self.dataloader_target_iter = enumerate(self.dataloader_target)
+            if self.iter_idx % len(self.dataloader_target_adapted) == 0:
+                self.dataloader_target_adapted_iter = enumerate(self.dataloader_target_adapted)
 
-                ########################
-                #  OPTIMIZE GENERATOR
-                ########################
-                # Backbone grad: O
-                # Decoder grad:  O
-                # Discr. grad:   X
-                for params in self.backbone.parameters():
-                    params.requires_grad = True
-                for params in self.decode_head.parameters():
-                    params.requires_grad = True
-                for params in self.discr.parameters():
-                    params.requires_grad = False
-
-                # Generate model features
-                if self.adaption_level == 'backbone':
-                    target_x = self.extract_feat(target_imgs)[-1]
-                elif self.adaption_level == 'output':
-                    target_x = self.encode_decode(target_imgs, img_metas)
-                else:
-                    raise ValueError(f"Given feature adaption level not supported ({self.adaption_level})")
-
-                # Discriminator prediction
-                pred_discr = self.discr(target_x)
-
-                # Discriminator label
-                label = torch.ones((N, d1, d2), dtype=torch.long).to('cuda')
-
-                loss_gen = self.NLLLoss(F.log_softmax(pred_discr, dim=1), label)
-
-                loss_gen = self.lambda_gen * loss_gen
-
-                loss_gen.backward()
-
-                self.loss_gen_list.append(loss_gen.item())
-                self.gen_steps += 1
-                self.gen_steps_tot += 1
-                
-                #######################
-                #  OPTIMIZATION STEP
-                #######################
-                self.optimizer_discr.step()
-                self.optimizer_backbone.step()
-                self.optimizer_decoder.step()
-                
-                #################
-                #  SAVE MODELS
-                #################
-                if self.iter_idx % self.save_interval == 0:
-                    print('Saving model')
-                    save_model(self.backbone, self.decode_head, self.discr, 
-                               self.iter_idx, self.save_dir)
-
-        # Never again go beyond this point ...
+        # Never ever again go beyond this point
         exit()
 
         losses = self(**data_batch)
@@ -822,3 +865,4 @@ class FeatureAdaption(EncoderDecoder):
         # unravel batch dim
         seg_pred = list(seg_pred)
         return seg_pred
+
