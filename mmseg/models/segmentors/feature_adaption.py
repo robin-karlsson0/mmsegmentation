@@ -470,8 +470,8 @@ class FeatureAdaption(EncoderDecoder):
             self.initialize_decode_head_frozen = False
 
         # Freeze batchnorm statistics
-        freeze_batchnorm(self.backbone)
-        freeze_batchnorm(self.decode_head)
+        #freeze_batchnorm(self.backbone)
+        #freeze_batchnorm(self.decode_head)
 
         ################
         #  OPTIMIZERS
@@ -630,12 +630,14 @@ class FeatureAdaption(EncoderDecoder):
             self.backbone_frozen = copy.deepcopy(self.backbone)
             for params in self.backbone_frozen.parameters():
                 params.requires_grad = False
+            freeze_batchnorm(self.backbone_frozen)
             self.initialize_backbone_frozen = False
-
+            
             if self.initialize_decode_head_frozen:
                 self.decode_head_frozen = copy.deepcopy(self.decode_head)
                 for params in self.decode_head_frozen.parameters():
                     params.requires_grad = False
+                freeze_batchnorm(self.decode_head_frozen)
                 self.initialize_decode_head_frozen = False
 
         # Run loop until finished
