@@ -8,6 +8,7 @@ from .. import builder
 from ..builder import SEGMENTORS
 from .base import BaseSegmentor
 from .encoder_decoder import EncoderDecoder
+from ada.fft_domain_transfer import transform_img_source2target, ImgFetcher
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -19,42 +20,228 @@ import copy
 from collections import deque
 import yaml
 import pickle
+import random
 
-class FeatureAdaptionDataset(Dataset):
+class SemanticSegDataset(Dataset):
 
-    def __init__(self, root_dir, crop):
+    def __init__(self, root_dir):
         '''
-        Args:
-            label: Integer (source, target) = (1, 0)
         '''
 
         if os.path.isdir(root_dir):
             self.root_dir = root_dir
         else:
-            raise FileNotFoundError(f"Dataset directories do not exists")
+            raise FileNotFoundError(f"Dataset directories do not exists \
+                                     ({root_dir})")
+        
+        self.samples_N = 0
+    
+    def __len__(self):
+        return self.samples_N
+
+    def _random_crop(self, img, random_ratio_1, random_ratio_2):
+        '''
+        '''
+        dim = len(img.shape)
+        if dim == 3:
+            crop_start_h = int(np.round((img.shape[1] - self.crop_h) * random_ratio_1))
+            crop_start_w = int(np.round((img.shape[2] - self.crop_w) * random_ratio_2))
+
+            h0 = crop_start_h
+            h1 = crop_start_h+self.crop_h
+            w0 = crop_start_w
+            w1 = crop_start_w+self.crop_w
+
+            img = img[:, h0:h1, w0:w1]
+        elif dim == 2:
+            crop_start_h = int(np.round((img.shape[0] - self.crop_h) * random_ratio_1))
+            crop_start_w = int(np.round((img.shape[1] - self.crop_w) * random_ratio_2))
+
+            h0 = crop_start_h
+            h1 = crop_start_h+self.crop_h
+            w0 = crop_start_w
+            w1 = crop_start_w+self.crop_w
+
+            img = img[h0:h1, w0:w1]
+        else:
+            raise ValueError(f"Unsupported dimensino for image crop ({img.shape})")
+
+        return img
+
+
+class SourceDatasetA2D2(SemanticSegDataset):
+    '''
+    dataloader_iter = enumerate(dataloader)
+    
+    _, batch = dataloader_iter.__next__()
+
+    batch --> [imgs_tensor, labels_tensor]
+        imgs_tensor   --> (N, C, H, W)
+        labels_tensor --> (N, H, W)
+    '''
+
+    def __init__(self, root_dir, subset, crop, target_adaption_path=None, label_postfix='_labelTrainIds'):
+        '''
+        Args:
+            subset: String specifying subset to load.
+                    Options: 'train', 'val', 'test'
+        '''
+        super().__init__(root_dir)
+
+        if subset not in ('train', 'val', 'test'):
+            raise ValueError(f"Invalid dataset 'subset' ({subset})")
+
+        self.img_dir = os.path.join(root_dir, 'img_dir', subset)
+        self.ann_dir = os.path.join(root_dir, 'ann_dir', subset)
+
+        if ((os.path.isdir(self.img_dir) is False) or
+            (os.path.isdir(self.ann_dir) is False)):
+           raise FileNotFoundError(f"Invalid dataset paths ({self.img_dir}, \
+                                     {self.ann_dir})")
+
+        # Create list of image filenames
+        self.img_list = os.listdir(self.img_dir)
+
+        self.samples_N = len(self.img_list)
+
+        self.label_postfix = label_postfix
+
+        self.crop_h = crop[0]
+        self.crop_w = crop[1]
+
+        # Image adaption
+        if target_adaption_path is not None:
+            self.target_img_fetcher = ImgFetcher(target_adaption_path)
+            self.fft_beta = 0.0015  # A2D2 --> Cityscapes
+        else:
+            self.target_img_fetcher = None
+
+        self.normalize = transforms.Compose([
+            transforms.Normalize(
+                mean=[123.675/255., 116.28/255., 103.53/255.],
+                std=[58.395/255., 57.12/255., 57.375/255.])
+        ])
+
+    def __getitem__(self, idx):
+        
+        img_filename = self.img_list[idx]
+        ann_filename = img_filename.replace('.png', self.label_postfix + '.png')
+
+        img = mmcv.imread(os.path.join(self.img_dir, img_filename))
+        ann = mmcv.imread(os.path.join(os.path.join(self.ann_dir, ann_filename)), flag='grayscale')
+
+        # (H,W,C) --> (C,H,W)
+        img = np.transpose(img, (2,0,1))
+
+        # Random crop
+        random_ratio_1 = np.random.random()
+        random_ratio_2 = np.random.random()
+        img = self._random_crop(img, random_ratio_1, random_ratio_2)
+        ann = self._random_crop(ann, random_ratio_1, random_ratio_2)
+
+        # Random horizontal flip
+        if np.random.random() > -0.5:
+            img = np.flip(img, axis=2)
+            ann = np.flip(ann, axis=1)
+
+        # Image adaption
+        if self.target_img_fetcher is not None:
+            trg_img_path = self.target_img_fetcher.get_img_path()
+            trg_img = mmcv.imread(trg_img_path)
+            # (H,W,C) --> (C,H,W)
+            trg_img = np.transpose(trg_img, (2,0,1))
+            # Random crop
+            trg_img = self._random_crop(trg_img, random_ratio_1, random_ratio_2)
+            # (C,H,W) --> (H,W,C)
+            img = img.transpose((1,2,0))
+            trg_img = trg_img.transpose((1,2,0))
+            img = transform_img_source2target(img, trg_img, beta=self.fft_beta)
+            # PIL --> Numpy array
+            img = np.array(img)
+            # (H,W,C) --> (C,H,W)
+            img = np.transpose(img, (2,0,1))
+        
+        img = torch.from_numpy(np.ascontiguousarray(img ,dtype=np.float))
+        ann = torch.from_numpy(np.ascontiguousarray(ann ,dtype=np.float))
+
+        img = torch.div(img, 255.)
+        img = self.normalize(img)
+
+        return img, ann
+
+
+class FeatureAdaptionDatasetCityscapes(SemanticSegDataset):
+    '''
+    dataloader_iter = enumerate(dataloader)
+    
+    _, batch = dataloader_iter.__next__()
+
+    batch --> [img_1, ..., img_N] for batch size N
+    '''
+
+    def __init__(self, root_dir, crop, target_adaption_path=None):
+        '''
+        Args:
+            label: Integer (source, target) = (1, 0)
+        '''
+        super().__init__(root_dir)
 
         self.samples_N = len(os.listdir(self.root_dir))
 
-        self.transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.RandomCrop(crop),
-            transforms.RandomHorizontalFlip(),
+        self.crop_h = crop[0]
+        self.crop_w = crop[1]
+
+        self.normalize = transforms.Compose([
             transforms.Normalize(
-                mean=[123.675/255., 116.28/255., 103.53/255.], std=[58.395/255., 57.12/255., 57.375/255.]
-            )
-            
+                mean=[123.675/255., 116.28/255., 103.53/255.],
+                std=[58.395/255., 57.12/255., 57.375/255.])
         ])
 
-    def __len__(self):
-        return self.samples_N
+        # Image adaption
+        if target_adaption_path is not None:
+            trg_img_dir = os.path.join(target_adaption_path, 'img_dir', 'train')
+            self.target_img_fetcher = ImgFetcher(trg_img_dir)
+            self.fft_beta = 0.0015  # Cityscapes --> A2D2
+        else:
+            self.target_img_fetcher = None
 
     def __getitem__(self, idx):
         
         filepath = os.path.join(self.root_dir, f"{idx}.png")
         img = mmcv.imread(filepath)
 
-        img = self.transform(img)
-        img = img.to('cuda')
+        # (H,W,C) --> (C,H,W)
+        img = np.transpose(img, (2,0,1))
+
+        # Random crop
+        random_ratio_1 = np.random.random()
+        random_ratio_2 = np.random.random()
+        img = self._random_crop(img, random_ratio_1, random_ratio_2)
+
+        # Random horizontal flip
+        if np.random.random() > -0.5:
+            img = np.flip(img, axis=2)
+
+         # Image adaption
+        if self.target_img_fetcher is not None:
+            trg_img_path = self.target_img_fetcher.get_img_path()
+            trg_img = mmcv.imread(trg_img_path)
+            # (H,W,C) --> (C,H,W)
+            trg_img = np.transpose(trg_img, (2,0,1))
+            # Random crop
+            trg_img = self._random_crop(trg_img, random_ratio_1, random_ratio_2)
+            # (C,H,W) --> (H,W,C)
+            img = img.transpose((1,2,0))
+            trg_img = trg_img.transpose((1,2,0))
+            img = transform_img_source2target(img, trg_img, beta=self.fft_beta)
+            # PIL --> Numpy array
+            img = np.array(img)
+            # (H,W,C) --> (C,H,W)
+            img = np.transpose(img, (2,0,1))
+
+        img = torch.from_numpy(np.ascontiguousarray(img ,dtype=np.float))
+        img = torch.div(img, 255.)
+        img = self.normalize(img)
 
         return img
 
@@ -197,6 +384,7 @@ class FeatureAdaption(EncoderDecoder):
         self.discr_dropout_p = float(params['discr_dropout_p'])
         self.discr_acc_threshold = float(params['discr_acc_threshold'])
         self.cropbox = params['cropbox']  # (512, 1024)
+        self.source_subset = params['source_subset']
         self.dataset_path_source = params['dataset_path_source']
         self.dataset_path_target = params['dataset_path_target']
         self.train_log_file = params['train_log_file']
@@ -213,6 +401,7 @@ class FeatureAdaption(EncoderDecoder):
         print(f"discr_dropout_p:     {self.discr_dropout_p}")
         print(f"discr_acc_threshold: {self.discr_acc_threshold}")
         print(f"cropbox:             {self.cropbox}")
+        print(f"source_subset:      {self.source_subset}")
         print(f"dataset_path_source: {self.dataset_path_source}")
         print(f"dataset_path_target: {self.dataset_path_target}")
         print(f"train_log_file:      {self.train_log_file}")
@@ -231,11 +420,21 @@ class FeatureAdaption(EncoderDecoder):
         #  DATASETS
         ##############
         # Datasets
-        self.dataset_source = FeatureAdaptionDataset(self.dataset_path_source, self.cropbox)
-        self.dataset_target = FeatureAdaptionDataset(self.dataset_path_target, self.cropbox)
+        self.dataset_source = SourceDatasetA2D2(self.dataset_path_source, self.source_subset, self.cropbox)
+        self.dataset_target = FeatureAdaptionDatasetCityscapes(self.dataset_path_target, self.cropbox)
+        self.dataset_source_adapted = SourceDatasetA2D2(self.dataset_path_source, self.source_subset, self.cropbox, target_adaption_path=self.dataset_path_target)
+        self.dataset_target_adapted = FeatureAdaptionDatasetCityscapes(self.dataset_path_target, self.cropbox, target_adaption_path=self.dataset_path_source)
         # Dataloaders
-        self.dataloader_source = DataLoader(self.dataset_source, batch_size=self.batch_size)
-        self.dataloader_target = DataLoader(self.dataset_target, batch_size=self.batch_size)
+        self.dataloader_source = DataLoader(self.dataset_source, batch_size=self.batch_size, shuffle=True)
+        self.dataloader_target = DataLoader(self.dataset_target, batch_size=self.batch_size, shuffle=True)
+        self.dataloader_source_adapted = DataLoader(self.dataset_source_adapted, batch_size=self.batch_size, shuffle=True)
+        self.dataloader_target_adapted = DataLoader(self.dataset_target_adapted, batch_size=self.batch_size, shuffle=True)
+        # Dataloader iterators
+        # Usage: _, batch = iter.__next()
+        self.dataloader_source_iter = enumerate(self.dataloader_source)
+        self.dataloader_target_iter = enumerate(self.dataloader_target)
+        self.dataloader_source_adapted_iter = enumerate(self.dataloader_source_adapted)
+        self.dataloader_target_adapted_iter = enumerate(self.dataloader_target_adapted)
 
         print(f"Using {len(self.dataloader_source.dataset)} source images")
         print(f"Using {len(self.dataloader_target.dataset)} target images\n")
@@ -306,7 +505,7 @@ class FeatureAdaption(EncoderDecoder):
 
         # So that generator is not optimized by chance
         for _ in range(100):
-            self.discr_acc.append(50.)
+            self.discr_acc.append(0.)
 
     def extract_feat_frozen(self, img):
         """Extract features from images."""
@@ -389,113 +588,180 @@ class FeatureAdaption(EncoderDecoder):
         # Run loop until finished
         while True:
 
-            for source_imgs, target_imgs in zip(self.dataloader_source, self.dataloader_target):
+            #_, batch_source = self.dataloader_source_iter.__next__()
+            #_, batch_target = self.dataloader_target_iter.__next__()
+            #_, batch_source_adapted = self.dataloader_source_adapted_iter.__next__()
+            _, batch_target_adapted = self.dataloader_target_adapted_iter.__next__()
 
-                self.iter_idx += 1
+            #print(len(batch_source_adapted))
+            #img = batch_source_adapted[0]
+            #label = batch_source_adapted[1]
 
-                if self.iter_idx % self.print_interval == 0:
-                    print(f"Iter {self.iter_idx} | Discr. L {np.mean(self.loss_disc_list):.6f} (Acc. {np.mean(self.discr_acc):.2f} %) | Gen. L {np.mean(self.loss_gen_list):.6f} (steps {self.gen_steps}/{self.gen_steps_tot})")
-                    self.write_log_entry(f"{self.iter_idx}, {self.gen_steps_tot}, {np.mean(self.discr_acc):.2f}\n")
+            print(len(batch_target_adapted))
+            img = batch_target_adapted[0]
 
-                    self.gen_steps = 0
+            print(img.shape)
+            #print(label.shape)
 
-                self.optimizer_discr.zero_grad()
-                self.optimizer_backbone.zero_grad()
-                self.optimizer_decoder.zero_grad()
+            #plt.subplot(1,2,1)
+            plt.imshow(np.transpose(img, (1,2,0))[:, :, [2, 1, 0]].numpy())
+            #plt.subplot(1,2,2)
+            #plt.imshow(label[0].numpy())
+            plt.show()
+            
+            exit()
 
-                ############################
-                #  OPTIMIZE DISCRIMINATOR
-                ############################
-                # Backbone grad: X
-                # Decoder grad:  X
-                # Discr. grad:   O
+            self.iter_idx += 1
+
+            # Learning gradients switch
+            #     Backbone grad: O
+            #     Decoder grad:  O
+            #     Discr. grad:   X
+            for params in self.backbone.parameters():
+                params.requires_grad = True
+            for params in self.decode_head.parameters():
+                params.requires_grad = True
+            for params in self.discr.parameters():
+                params.requires_grad = False
+
+            ##################################
+            #  1: Adapted source label loss
+            ##################################
+            _, batch_source = self.dataloader_source_iter.__next__()
+            
+
+            ################################
+            #  2. Target consistency loss
+            ################################
+
+            #############################
+            #  3. Adapt model features
+            #############################
+
+            # Learning gradients switch
+            #     Backbone grad: X
+            #     Decoder grad:  X
+            #     Discr. grad:   O
+            for params in self.backbone.parameters():
+                params.requires_grad = False
+            for params in self.decode_head.parameters():
+                params.requires_grad = False
+            for params in self.discr.parameters():
+                params.requires_grad = True
+
+            ############################
+            #  4. Train discriminator
+            ############################
+            
+
+            
+
+
+
+
+            if self.iter_idx % self.print_interval == 0:
+                print(f"Iter {self.iter_idx} | Discr. L {np.mean(self.loss_disc_list):.6f} (Acc. {np.mean(self.discr_acc):.2f} %) | Gen. L {np.mean(self.loss_gen_list):.6f} (steps {self.gen_steps}/{self.gen_steps_tot})")
+                self.write_log_entry(f"{self.iter_idx}, {self.gen_steps_tot}, {np.mean(self.discr_acc):.2f}\n")
+
+                self.gen_steps = 0
+
+            self.optimizer_discr.zero_grad()
+            self.optimizer_backbone.zero_grad()
+            self.optimizer_decoder.zero_grad()
+
+            ############################
+            #  OPTIMIZE DISCRIMINATOR
+            ############################
+            # Backbone grad: X
+            # Decoder grad:  X
+            # Discr. grad:   O
+            for params in self.backbone.parameters():
+                params.requires_grad = False
+            for params in self.decode_head.parameters():
+                params.requires_grad = False
+            for params in self.discr.parameters():
+                params.requires_grad = True
+
+            # Generate model features
+            if self.adaption_level == 'backbone':
+                with torch.no_grad():
+                    source_x = self.extract_feat_frozen(source_imgs)[-1]  # (2,512,64,128)
+                    target_x = self.extract_feat(target_imgs)[-1]
+            elif self.adaption_level == 'output':
+                with torch.no_grad():
+                    source_x = self.encode_decode_frozen(source_imgs, img_metas)  # (2,19,128,256)
+                    target_x = self.encode_decode(target_imgs, img_metas)
+            else:
+                raise ValueError(f"Given feature adaption level not supported ({self.adaption_level})")
+
+            # Discriminator prediction
+            source_pred = self.discr(source_x)  # (2,2,64,128)
+            target_pred = self.discr(target_x)
+
+            pred_discr = torch.cat((source_pred, target_pred))
+
+            # Dimensions for label
+            N, _, d1, d2 = source_pred.shape
+
+            # Discriminator label
+            source_label = torch.ones((N, d1, d2), dtype=torch.long)
+            target_label = torch.zeros((N, d1, d2), dtype=torch.long)
+
+            label = torch.cat((source_label, target_label)).to('cuda')  # (4, 64, 128)
+
+            # Compute loss
+            loss_discr = self.NLLLoss(F.log_softmax(pred_discr, dim=1), label)
+
+            loss_discr = self.lambda_discr * loss_discr
+
+            loss_discr.backward()
+
+            # Compute discriminator accuracy
+            pred_dis = torch.squeeze(pred_discr.max(1)[1])
+            dom_acc = (pred_dis == label).float().mean().item() 
+            self.discr_acc.append(dom_acc * 100.)
+
+            self.loss_disc_list.append(loss_discr.item())
+
+            # Only train generator if discriminator is accurate
+            if np.mean(self.discr_acc) > self.discr_acc_threshold:
+
+                ########################
+                #  OPTIMIZE GENERATOR
+                ########################
+                # Backbone grad: O
+                # Decoder grad:  O
+                # Discr. grad:   X
                 for params in self.backbone.parameters():
-                    params.requires_grad = False
-                for params in self.decode_head.parameters():
-                    params.requires_grad = False
-                for params in self.discr.parameters():
                     params.requires_grad = True
+                for params in self.decode_head.parameters():
+                    params.requires_grad = True
+                for params in self.discr.parameters():
+                    params.requires_grad = False
 
                 # Generate model features
                 if self.adaption_level == 'backbone':
-                    with torch.no_grad():
-                        source_x = self.extract_feat_frozen(source_imgs)[-1]  # (2,512,64,128)
-                        target_x = self.extract_feat(target_imgs)[-1]
+                    target_x = self.extract_feat(target_imgs)[-1]
                 elif self.adaption_level == 'output':
-                    with torch.no_grad():
-                        source_x = self.encode_decode_frozen(source_imgs, img_metas)  # (2,19,128,256)
-                        target_x = self.encode_decode(target_imgs, img_metas)
+                    target_x = self.encode_decode(target_imgs, img_metas)
                 else:
                     raise ValueError(f"Given feature adaption level not supported ({self.adaption_level})")
 
                 # Discriminator prediction
-                source_pred = self.discr(source_x)  # (2,2,64,128)
-                target_pred = self.discr(target_x)
-
-                pred_discr = torch.cat((source_pred, target_pred))
-
-                # Dimensions for label
-                N, _, d1, d2 = source_pred.shape
+                pred_discr = self.discr(target_x)
 
                 # Discriminator label
-                source_label = torch.ones((N, d1, d2), dtype=torch.long)
-                target_label = torch.zeros((N, d1, d2), dtype=torch.long)
+                label = torch.ones((N, d1, d2), dtype=torch.long).to('cuda')
 
-                label = torch.cat((source_label, target_label)).to('cuda')  # (4, 64, 128)
+                loss_gen = self.NLLLoss(F.log_softmax(pred_discr, dim=1), label)
 
-                # Compute loss
-                loss_discr = self.NLLLoss(F.log_softmax(pred_discr, dim=1), label)
+                loss_gen = self.lambda_gen * loss_gen
 
-                loss_discr = self.lambda_discr * loss_discr
+                loss_gen.backward()
 
-                loss_discr.backward()
-
-                # Compute discriminator accuracy
-                pred_dis = torch.squeeze(pred_discr.max(1)[1])
-                dom_acc = (pred_dis == label).float().mean().item() 
-                self.discr_acc.append(dom_acc * 100.)
-
-                self.loss_disc_list.append(loss_discr.item())
-
-                # Only train generator if discriminator is accurate
-                if np.mean(self.discr_acc) > self.discr_acc_threshold:
-
-                    ########################
-                    #  OPTIMIZE GENERATOR
-                    ########################
-                    # Backbone grad: O
-                    # Decoder grad:  O
-                    # Discr. grad:   X
-                    for params in self.backbone.parameters():
-                        params.requires_grad = True
-                    for params in self.decode_head.parameters():
-                        params.requires_grad = True
-                    for params in self.discr.parameters():
-                        params.requires_grad = False
-
-                    # Generate model features
-                    if self.adaption_level == 'backbone':
-                        target_x = self.extract_feat(target_imgs)[-1]
-                    elif self.adaption_level == 'output':
-                        target_x = self.encode_decode(target_imgs, img_metas)
-                    else:
-                        raise ValueError(f"Given feature adaption level not supported ({self.adaption_level})")
-
-                    # Discriminator prediction
-                    pred_discr = self.discr(target_x)
-
-                    # Discriminator label
-                    label = torch.ones((N, d1, d2), dtype=torch.long).to('cuda')
-
-                    loss_gen = self.NLLLoss(F.log_softmax(pred_discr, dim=1), label)
-
-                    loss_gen = self.lambda_gen * loss_gen
-
-                    loss_gen.backward()
-
-                    self.loss_gen_list.append(loss_gen.item())
-                    self.gen_steps += 1
-                    self.gen_steps_tot += 1
+                self.loss_gen_list.append(loss_gen.item())
+                self.gen_steps += 1
+                self.gen_steps_tot += 1
                 
                 #######################
                 #  OPTIMIZATION STEP
