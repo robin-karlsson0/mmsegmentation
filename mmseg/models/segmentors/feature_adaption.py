@@ -487,7 +487,7 @@ class FeatureAdaption(EncoderDecoder):
 
         # Optimizer for 'discriminator' parameters
         params = [p for p in self.discr.parameters() if p.requires_grad]
-        self.optimizer_discr = torch.optim.SGD(params, lr=self.discr_lr, weight_decay=0.0005, momentum=self.sgd_momentum)
+        self.optimizer_discr = torch.optim.Adam(params, lr=self.discr_lr, weight_decay=0.0005, betas=(0.9, 0.99)) #momentum=self.sgd_momentum)
 
         #####################
         #  LOSS CRITERIONS
