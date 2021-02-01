@@ -655,11 +655,7 @@ class FeatureAdaption(EncoderDecoder):
                 consis_mean = np.mean(self.loss_consis_list)
                 adv_feat_mean = np.mean(self.loss_adv_feat_list)
                 discr_mean = np.mean(self.loss_discr_list)
-                print(f"Iter {self.iter_idx} | \
-                        Seg {seg_mean:.3f} | \
-                        Consis {consis_mean:.3f}| \
-                        Adv. feat {adv_feat_mean:.3f} | \
-                        Discr {discr_mean:.3f}")
+                print(f"Iter {self.iter_idx} | Seg {seg_mean:.3f} | Consis {consis_mean:.3f}| Adv. feat {adv_feat_mean:.3f} | Discr {discr_mean:.3f}")
                 self.write_log_entry(f"{self.iter_idx}, {seg_mean:.6f}, {consis_mean:.6f}, {adv_feat_mean:.6f}, {discr_mean:.6f}\n")        
                 
                 #self.gen_steps = 0
@@ -709,11 +705,8 @@ class FeatureAdaption(EncoderDecoder):
             _, batch_target_adapted = self.dataloader_target_adapted_iter.__next__()
 
             # Unpack 'list batch' --> image tensors
-            imgs_target = self._list_batch2tensor(batch_target)#.to('cuda')
-            imgs_target_adapted = self._list_batch2tensor(batch_target_adapted)#.to('cuda')
-
-            imgs_target = imgs_target.to('cuda')
-            imgs_target_adapted = imgs_target_adapted.to('cuda')
+            imgs_target = self._list_batch2tensor(batch_target).to('cuda')
+            imgs_target_adapted = self._list_batch2tensor(batch_target_adapted).to('cuda')
 
             # 'Target' output
             out_target = self.model_forward_target(imgs_target, img_metas)
