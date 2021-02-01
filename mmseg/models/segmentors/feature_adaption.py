@@ -500,10 +500,6 @@ class FeatureAdaption(EncoderDecoder):
         #  PARAMETERS
         ################
 
-        # Loss weights
-        self.lambda_discr = 1.
-        self.lambda_gen = 0.1
-
         # Optimization variables
         self.iter_idx = 0
         self.gen_steps = 0
@@ -656,7 +652,7 @@ class FeatureAdaption(EncoderDecoder):
                 adv_feat_mean = np.mean(self.loss_adv_feat_list)
                 discr_mean = np.mean(self.loss_discr_list)
                 discr_acc = np.mean(self.discr_acc_list)
-                print(f"Iter {self.iter_idx} | Seg {seg_mean:.3f} | Consis {consis_mean:.3f}| Adv. feat {adv_feat_mean:.3f} | Discr {discr_mean:.3f} (acc {discr_acc:.0}%)")
+                print(f"Iter {self.iter_idx} | Seg {seg_mean:.3f} | Consis {consis_mean:.3f}| Adv. feat {adv_feat_mean:.3f} | Discr {discr_mean:.3f} (acc {discr_acc:.0f}%)")
                 self.write_log_entry(f"{self.iter_idx}, {seg_mean:.6f}, {consis_mean:.6f}, {adv_feat_mean:.6f}, {discr_mean:.6f}\n")        
                 
                 #self.gen_steps = 0
@@ -790,9 +786,16 @@ class FeatureAdaption(EncoderDecoder):
             self.loss_discr_list.append(loss.item())
 
             # Compute discriminator accuracy
-            pred_dis = torch.squeeze(pred_discr.max(1)[1])
-            dom_acc = (pred_dis == label).float().mean().item() 
-            self.discr_acc_list.append(dom_acc * 100.)
+            pred_discr = pred_discr.detach().cpu().numpy()
+
+            source_pred = np.zeros(pred_discr[0:N].shape)
+            target_pred = np.zeros(pred_discr[N:].shape)
+            # Only consider confident prediction
+            source_pred[pred_discr[0:N] > 0.5] = 1.
+            target_pred[pred_discr[N:] <= -0.5] = 1.
+            
+            correct_pred = 0.5*(np.mean(source_pred) + np.mean(target_pred))
+            self.discr_acc_list.append(correct_pred * 100.)
 
             #######################
             #  OPTIMIZATION STEP
@@ -848,7 +851,6 @@ class FeatureAdaption(EncoderDecoder):
         with open("iter_idx.txt", 'r') as file:
             load_idx = int(file.readline())
         if load_idx >= 0:
-            print("\nLoading adapted model iteration {load_idx}")
             load_model(self.backbone, self.decode_head, self.discr, load_idx, self.save_dir)
 
         seg_logit = self.inference(img, img_meta, rescale)
