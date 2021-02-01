@@ -655,7 +655,8 @@ class FeatureAdaption(EncoderDecoder):
                 consis_mean = np.mean(self.loss_consis_list)
                 adv_feat_mean = np.mean(self.loss_adv_feat_list)
                 discr_mean = np.mean(self.loss_discr_list)
-                print(f"Iter {self.iter_idx} | Seg {seg_mean:.3f} | Consis {consis_mean:.3f}| Adv. feat {adv_feat_mean:.3f} | Discr {discr_mean:.3f}")
+                discr_acc = np.mean(self.discr_acc_list)
+                print(f"Iter {self.iter_idx} | Seg {seg_mean:.3f} | Consis {consis_mean:.3f}| Adv. feat {adv_feat_mean:.3f} | Discr {discr_mean:.3f} (acc {discr_acc:.0}%)")
                 self.write_log_entry(f"{self.iter_idx}, {seg_mean:.6f}, {consis_mean:.6f}, {adv_feat_mean:.6f}, {discr_mean:.6f}\n")        
                 
                 #self.gen_steps = 0
