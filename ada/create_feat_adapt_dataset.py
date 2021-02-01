@@ -6,7 +6,7 @@ feat_adapt_dataset_path = "/media/robin/Data/feat_adapt_dataset"  #"var/dataset/
 os.mkdir(feat_adapt_dataset_path)
 
 # Root paths
-a2d2_img_path = "/media/robin/Data/a2d2_dataset/camera_lidar_semantic/img_dir"  #"/var/datasets/a2d2/camera_lidar_semantic/img_dir"
+a2d2_img_path = "/media/robin/Data/a2d2/camera_lidar_semantic/img_dir"  #"/var/datasets/a2d2/camera_lidar_semantic/img_dir"
 
 cityscapes_img_path = "/media/robin/Data/cityscapes_dataset/leftImg8bit"  #"/var/datasets/cityscapes/leftImg8bit"
 

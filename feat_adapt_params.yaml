@@ -3,10 +3,17 @@ model_lr: 1e-4
 sgd_momentum: 0.9
 batch_size: 2
 discr_dropout_p: 0.
-discr_acc_threshold: 60.
+discr_acc_threshold: -1.
 
-cropbox: !!python/tuple [480, 1204]
-dataset_path_source: '/media/robin/Data/feat_adapt_dataset/a2d2'  #'/var/datasets/feat_adapt_dataset/a2d2'
+# Loss scaling values
+lambda_seg: 1.
+lambda_consis: 10.
+lambda_discr: 0.001
+
+
+cropbox: !!python/tuple [256, 256] #[480, 1204]
+source_subset: 'train'
+dataset_path_source: '/media/robin/Data/a2d2/camera_lidar_semantic/'  #'/var/datasets/feat_adapt_dataset/a2d2'
 dataset_path_target: '/media/robin/Data/feat_adapt_dataset/cityscapes'  #'/var/datasets/feat_adapt_dataset/cityscapes'
 train_log_file: 'train_log.txt'
 # Backbone features: 512
@@ -16,7 +23,7 @@ discr_input_dim: 19
 save_dir: 'exp1'
 save_interval: 2000
 
-# backbone
+# backbone <-- UNTESTED
 # output
 adaption_level: 'output'
 
@@ -24,5 +31,6 @@ adaption_level: 'output'
 # struct
 discriminator: 'struct'
 
-# Debug parameters
-print_interval: 100
+# Miscellaneous parameters
+print_interval: 1
+num_workers: 1
