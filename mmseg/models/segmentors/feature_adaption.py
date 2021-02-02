@@ -360,6 +360,7 @@ class FeatureAdaption(EncoderDecoder):
                  train_cfg=None,
                  test_cfg=None,
                  pretrained=None):
+
         super(FeatureAdaption, self).__init__(backbone, decode_head, neck, auxiliary_head, train_cfg, test_cfg, pretrained)
         self.backbone = builder.build_backbone(backbone)
         if neck is not None:
@@ -593,6 +594,33 @@ class FeatureAdaption(EncoderDecoder):
 
         return target_x
 
+    def forward_train(self, img, img_metas, gt_semantic_seg):
+        """Forward function for training.
+
+        Args:
+            img (Tensor): Input images.
+            img_metas (list[dict]): List of image info dict where each dict
+                has: 'img_shape', 'scale_factor', 'flip', and may also contain
+                'filename', 'ori_shape', 'pad_shape', and 'img_norm_cfg'.
+                For details on the values of these keys see
+                `mmseg/datasets/pipelines/formatting.py:Collect`.
+            gt_semantic_seg (Tensor): Semantic segmentation masks
+                used if the architecture supports semantic segmentation task.
+
+        Returns:
+            dict[str, Tensor]: a dictionary of loss components
+        """
+
+        x = self.extract_feat(img)
+
+        losses = dict()
+
+        loss_decode = self._decode_head_forward_train(x, img_metas,
+                                                      gt_semantic_seg)
+        losses.update(loss_decode)
+
+        return losses
+
     def train_step(self, data_batch, optimizer, **kwargs):
         """The iteration step during training.
 
@@ -604,6 +632,9 @@ class FeatureAdaption(EncoderDecoder):
 
         Args:
             data (dict): The output of dataloader.
+                data['img'] --> Tensor dim (N,C,H,W)
+                data['gt_semantic_seg'] --> Tensor dim (N,1,H,W)
+                data['img_metas'] --> List (img_meta_1, ... , img_meta_N)
             optimizer (:obj:`torch.optim.Optimizer` | dict): The optimizer of
                 runner is passed to ``train_step()``. This argument is unused
                 and reserved.
@@ -620,7 +651,15 @@ class FeatureAdaption(EncoderDecoder):
                 averaging the logs.
         """
 
+        img = data_batch['img']
+        gt_semantic_seg = data_batch['gt_semantic_seg']
         img_metas = data_batch['img_metas'][0]
+        
+        print(data_batch.keys())
+        print(img.shape)
+        print(gt_semantic_seg.shape)
+        print(type(img_metas))
+        
 
         #######################################################################
         #  Be careful about what gradients that gets accumulated and updated
@@ -687,13 +726,27 @@ class FeatureAdaption(EncoderDecoder):
             _, batch_source_adapted = self.dataloader_source_iter.__next__()
             imgs_source_adapted = batch_source_adapted[0].to('cuda')
             labels_source_adapted = batch_source_adapted[1].to('cuda')
+            labels_source_adapted = torch.unsqueeze(labels_source_adapted, 1)
+
+            #plt.subplot(1,2,1)
+            #plt.imshow(np.transpose(img[0].cpu().numpy(), (1,2,0)))
+            #plt.subplot(1,2,2)
+            #plt.imshow(np.transpose(imgs_source_adapted[0].cpu().numpy(), (1,2,0)))
+            #plt.show()
+
+            #with torch.no_grad():
+            loss_dict = self.forward_train(imgs_source_adapted, img_metas, labels_source_adapted)            
+            loss = loss_dict['decode.loss_seg']
+
 
             # Adapted source samples w. Target model
-            out_source_adapted_target = self.model_forward_target(imgs_source_adapted, img_metas)
-            #out_source_adapted_target = self.model_forward_source(imgs_source_adapted, img_metas)
-            out_source_adapted_target_resize = resize(input=out_source_adapted_target, size=imgs_source_adapted.shape[2:], mode='bilinear', align_corners=self.align_corners)
+            #with torch.no_grad():
+            #    out_source_adapted_target = self.model_forward_target(imgs_source_adapted, img_metas)
 
-            loss = self.CrossEntropyLoss(out_source_adapted_target_resize, labels_source_adapted)
+            #out_source_adapted_target = self.model_forward_source(imgs_source_adapted, img_metas)
+            #out_source_adapted_target_resize = resize(input=out_source_adapted_target, size=imgs_source_adapted.shape[2:], mode='bilinear', align_corners=self.align_corners)
+
+            #loss = self.CrossEntropyLoss(out_source_adapted_target_resize, labels_source_adapted)
             loss = self.lambda_seg * loss
             loss.backward(retain_graph=True)
             self.loss_seg_list.append(loss.item())
@@ -712,7 +765,6 @@ class FeatureAdaption(EncoderDecoder):
             #plt.subplot(1,3,3)
             #plt.imshow(c)
             #plt.show()
-            #continue
 
             ################################
             #  2. Target consistency loss
@@ -837,7 +889,7 @@ class FeatureAdaption(EncoderDecoder):
 
             # Reset iterators when cycled through
             if self.iter_idx % len(self.dataloader_source_adapted) == 0:
-                self.dataloader_source_adapted_iter = enumerate(self.dataloader_source_adapted)    
+                self.dataloader_source_adapted_iter = enumerate(self.dataloader_source_adapted)
             if self.iter_idx % len(self.dataloader_target) == 0:
                 self.dataloader_target_iter = enumerate(self.dataloader_target)
             if self.iter_idx % len(self.dataloader_target_adapted) == 0:
