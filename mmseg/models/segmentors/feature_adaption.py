@@ -112,23 +112,26 @@ class SourceDatasetA2D2(SemanticSegDataset):
         # Image adaption
         if target_adaption_path is not None:
             self.target_img_fetcher = ImgFetcher(target_adaption_path)
-            self.fft_beta = 0.0015  # A2D2 --> Cityscapes
+            self.fft_beta = 0.002  # A2D2 --> Cityscapes
         else:
             self.target_img_fetcher = None
 
         self.normalize = transforms.Compose([
             transforms.Normalize(
-                mean=[123.675/255., 116.28/255., 103.53/255.],
-                std=[58.395/255., 57.12/255., 57.375/255.])
+                mean=[123.675, 116.28, 103.53],
+                std=[58.395, 57.12, 57.375])
         ])
 
     def __getitem__(self, idx):
-        
+
         img_filename = self.img_list[idx]
         ann_filename = img_filename.replace('.png', self.label_postfix + '.png')
 
         img = mmcv.imread(os.path.join(self.img_dir, img_filename))
         ann = mmcv.imread(os.path.join(os.path.join(self.ann_dir, ann_filename)), flag='grayscale')
+
+        # BGR --> RGB
+        img = mmcv.bgr2rgb(img)
 
         # (H,W,C) --> (C,H,W)
         img = np.transpose(img, (2,0,1))
@@ -140,7 +143,7 @@ class SourceDatasetA2D2(SemanticSegDataset):
         ann = self._random_crop(ann, random_ratio_1, random_ratio_2)
 
         # Random horizontal flip
-        if np.random.random() > -0.5:
+        if np.random.random() > 0.5:
             img = np.flip(img, axis=2)
             ann = np.flip(ann, axis=1)
 
@@ -148,6 +151,7 @@ class SourceDatasetA2D2(SemanticSegDataset):
         if self.target_img_fetcher is not None:
             trg_img_path = self.target_img_fetcher.get_img_path()
             trg_img = mmcv.imread(trg_img_path)
+            trg_img = mmcv.bgr2rgb(trg_img)
             # (H,W,C) --> (C,H,W)
             trg_img = np.transpose(trg_img, (2,0,1))
             # Random crop
@@ -163,8 +167,6 @@ class SourceDatasetA2D2(SemanticSegDataset):
 
         img = torch.from_numpy(np.ascontiguousarray(img ,dtype=np.float32))
         ann = torch.from_numpy(np.ascontiguousarray(ann ,dtype=np.long))
-
-        img = torch.div(img, 255.)
         img = self.normalize(img)
 
         return img, ann
@@ -193,8 +195,8 @@ class FeatureAdaptionDatasetCityscapes(SemanticSegDataset):
 
         self.normalize = transforms.Compose([
             transforms.Normalize(
-                mean=[123.675/255., 116.28/255., 103.53/255.],
-                std=[58.395/255., 57.12/255., 57.375/255.])
+                mean=[123.675, 116.28, 103.53],
+                std=[58.395, 57.12, 57.375])
         ])
 
         # Image adaption
@@ -210,6 +212,9 @@ class FeatureAdaptionDatasetCityscapes(SemanticSegDataset):
         filepath = os.path.join(self.root_dir, f"{idx}.png")
         img = mmcv.imread(filepath)
 
+        # BGR --> RGB
+        img = mmcv.bgr2rgb(img)
+
         # (H,W,C) --> (C,H,W)
         img = np.transpose(img, (2,0,1))
 
@@ -219,13 +224,14 @@ class FeatureAdaptionDatasetCityscapes(SemanticSegDataset):
         img = self._random_crop(img, random_ratio_1, random_ratio_2)
 
         # Random horizontal flip
-        if np.random.random() > -0.5:
+        if np.random.random() > 0.5:
             img = np.flip(img, axis=2)
 
          # Image adaption
         if self.target_img_fetcher is not None:
             trg_img_path = self.target_img_fetcher.get_img_path()
             trg_img = mmcv.imread(trg_img_path)
+            trg_img = mmcv.bgr2rgb(trg_img)
             # (H,W,C) --> (C,H,W)
             trg_img = np.transpose(trg_img, (2,0,1))
             # Random crop
@@ -240,7 +246,6 @@ class FeatureAdaptionDatasetCityscapes(SemanticSegDataset):
             img = np.transpose(img, (2,0,1))
 
         img = torch.from_numpy(np.ascontiguousarray(img , dtype=np.float32))
-        img = torch.div(img, 255.)
         img = self.normalize(img)
 
         return img
@@ -470,8 +475,8 @@ class FeatureAdaption(EncoderDecoder):
             self.initialize_decode_head_frozen = False
 
         # Freeze batchnorm statistics
-        #freeze_batchnorm(self.backbone)
-        #freeze_batchnorm(self.decode_head)
+        freeze_batchnorm(self.backbone)
+        freeze_batchnorm(self.decode_head)
 
         ################
         #  OPTIMIZERS
@@ -678,19 +683,38 @@ class FeatureAdaption(EncoderDecoder):
             # Output <-- target_model(adapted_source_img)
             # should correspond to source label
 
-            _, batch_source_adapted = self.dataloader_source_adapted_iter.__next__()
+            #_, batch_source_adapted = self.dataloader_source_adapted_iter.__next__()
+            _, batch_source_adapted = self.dataloader_source_iter.__next__()
             imgs_source_adapted = batch_source_adapted[0].to('cuda')
             labels_source_adapted = batch_source_adapted[1].to('cuda')
 
             # Adapted source samples w. Target model
-            out_source_adapted_target = self.model_forward_target(imgs_source_adapted, img_metas)
+            with torch.no_grad():
+                out_source_adapted_target = self.model_forward_target(imgs_source_adapted, img_metas)
+            #out_source_adapted_target = self.model_forward_source(imgs_source_adapted, img_metas)
             out_source_adapted_target_resize = resize(input=out_source_adapted_target, size=imgs_source_adapted.shape[2:], mode='bilinear', align_corners=self.align_corners)
 
             loss = self.CrossEntropyLoss(out_source_adapted_target_resize, labels_source_adapted)
             loss = self.lambda_seg * loss
             loss.backward(retain_graph=True)
             self.loss_seg_list.append(loss.item())
+
+            #a = np.transpose(imgs_source_adapted.cpu().numpy()[0], (1,2,0))
+            #b = out_source_adapted_target_resize.argmax(dim=1)
+            #b = b.detach().cpu().numpy()[0]
+            #c = labels_source_adapted.cpu().numpy()[0]
+
+            #c[c == 255] = -1
             
+            #plt.subplot(1,3,1)
+            #plt.imshow(a)
+            #plt.subplot(1,3,2)
+            #plt.imshow(b)
+            #plt.subplot(1,3,3)
+            #plt.imshow(c)
+            #plt.show()
+            #continue
+
             ################################
             #  2. Target consistency loss
             ################################
