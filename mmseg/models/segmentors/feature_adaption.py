@@ -689,8 +689,7 @@ class FeatureAdaption(EncoderDecoder):
             labels_source_adapted = batch_source_adapted[1].to('cuda')
 
             # Adapted source samples w. Target model
-            with torch.no_grad():
-                out_source_adapted_target = self.model_forward_target(imgs_source_adapted, img_metas)
+            out_source_adapted_target = self.model_forward_target(imgs_source_adapted, img_metas)
             #out_source_adapted_target = self.model_forward_source(imgs_source_adapted, img_metas)
             out_source_adapted_target_resize = resize(input=out_source_adapted_target, size=imgs_source_adapted.shape[2:], mode='bilinear', align_corners=self.align_corners)
 
