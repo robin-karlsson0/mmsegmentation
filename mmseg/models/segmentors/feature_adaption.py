@@ -164,6 +164,8 @@ class FeatureAdaption(EncoderDecoder):
         # Dataloader iterators
         self.dataloader_target_iter = enumerate(self.dataloader_target)
 
+        self.iter_idx = 0
+
         ####################
         #  DISCRIMINATORS
         ####################
@@ -392,6 +394,8 @@ class FeatureAdaption(EncoderDecoder):
                 DDP, it means the batch size on each GPU), which is used for
                 averaging the logs.
         """
+        self.iter_idx += 1
+
         # Minibatch of normalized RGB image tensors with dim (N,C,H,W)
         img = data_batch['img']
         img_metas = data_batch['img_metas']
@@ -485,6 +489,9 @@ class FeatureAdaption(EncoderDecoder):
         #  OPTIMIZATION STEP
         #######################
         #self.optimizer_discr.step()
+
+        if self.iter_idx % len(self.dataloader_target) == 0:
+                self.dataloader_target_iter = enumerate(self.dataloader_target)
 
         # loss: Scalar tensor consisting of summed loss terms
         # - Loss value for source model back propagatino
