@@ -210,8 +210,8 @@ class FeatureAdaption(EncoderDecoder):
         self.KLDivLoss = nn.KLDivLoss(reduction='mean')
         self.CrossEntropyLoss = nn.CrossEntropyLoss()
 
-        optimization_types = 2
-        self.state_machine = SequentialStateMachine(optimization_types)
+        optimization_stages = 2
+        self.state_machine = SequentialStateMachine(optimization_stages)
 
     ############################
     #  SOURCE MODEL FUNCTIONS
