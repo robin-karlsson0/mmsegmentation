@@ -468,7 +468,7 @@ class FeatureAdaption(EncoderDecoder):
         self.iter_idx += 1
         losses = dict()
 
-        optimization_state = self.state_machine.get_state()
+        #optimization_state = self.state_machine.get_state()
 
         # Minibatch of normalized RGB image tensors with dim (N,C,H,W)
         img = data_batch['img']
@@ -496,21 +496,21 @@ class FeatureAdaption(EncoderDecoder):
         #  1: Supervised label loss
         ##################################
 
-        if optimization_state != 6:
+        #if optimization_state != 6:
 
-            # Encoder features from 'source' domain
-            out_feat_source_s = self.extract_feat_source(img)
-            out_feat_target_s = self.extract_feat_target(img)
+        # Encoder features from 'source' domain
+        out_feat_source_s = self.extract_feat_source(img)
+        out_feat_target_s = self.extract_feat_target(img)
 
-            # Source model
-            loss = self.forward_train_source(
-                out_feat_source_s, img_metas, gt_semantic_seg, self.lambda_seg)
-            losses.update(loss)
+        # Source model
+        loss = self.forward_train_source(
+            out_feat_source_s, img_metas, gt_semantic_seg, self.lambda_seg)
+        losses.update(loss)
 
-            # Target model
-            loss = self.forward_train_target(
-                out_feat_target_s, img_metas, gt_semantic_seg, self.lambda_seg)
-            losses.update(loss)
+        # Target model
+        loss = self.forward_train_target(
+            out_feat_target_s, img_metas, gt_semantic_seg, self.lambda_seg)
+        losses.update(loss)
 
         ################################################################
         #  2. Target consistency loss
@@ -518,42 +518,31 @@ class FeatureAdaption(EncoderDecoder):
         #  NOTE: Source model is NOT optimized (static distribution)
         ################################################################
 
-        if optimization_state != 6:
+        #if optimization_state != 6:
 
-            # Encoder features from 'target' domain
-            with torch.no_grad():
-                out_feat_source_t = self.extract_feat_source(img_target)
-            out_feat_target_t = self.extract_feat_target(img_target)
+        # Encoder features from 'target' domain
+        with torch.no_grad():
+            out_feat_source_t = self.extract_feat_source(img_target)
+        out_feat_target_t = self.extract_feat_target(img_target)
 
-            with torch.no_grad():
-                out_logit_source = self.output_logits_source(out_feat_source_t, img_metas)
-                out_prob_source = F.softmax(out_logit_source, dim=1)
-                out_problog_source = F.log_softmax(out_logit_source, dim=1)
+        with torch.no_grad():
+            out_logit_source = self.output_logits_source(out_feat_source_t, img_metas)
+            out_prob_source = F.softmax(out_logit_source, dim=1)
+            out_problog_source = F.log_softmax(out_logit_source, dim=1)
 
-            out_logit_target = self.output_logits_target(out_feat_target_t, img_metas)
-            out_prob_target = F.softmax(out_logit_target, dim=1)
-            out_problog_target = F.log_softmax(out_logit_target, dim=1)
-            
-            loss_cons = 0.5*(self.KLDivLoss(out_problog_source, out_prob_target)
-                    + self.KLDivLoss(out_problog_target, out_prob_source))
-            loss_cons = self.lambda_consis * loss_cons
-            losses_ = {'feature_adaptation.loss_consistency': loss_cons}
-            losses.update(losses_)
+        out_logit_target = self.output_logits_target(out_feat_target_t, img_metas)
+        out_prob_target = F.softmax(out_logit_target, dim=1)
+        out_problog_target = F.log_softmax(out_logit_target, dim=1)
+        
+        loss_cons = 0.5*(self.KLDivLoss(out_problog_source, out_prob_target)
+                + self.KLDivLoss(out_problog_target, out_prob_source))
+        loss_cons = self.lambda_consis * loss_cons
+        losses_ = {'feature_adaptation.loss_consistency': loss_cons}
+        losses.update(losses_)
         
         #############################
         #  3. Adapt model features
         #############################
-
-        ###
-        #ut_feat_source_s = self.extract_feat_source(img)
-        #out_logit_source = self.output_logits_source(out_feat_source_s, img_metas)
-
-        #out_feat_target_t = self.extract_feat_target(img_target)
-        #out_logit_target = self.output_logits_target(out_feat_target_t, img_metas)
-        ###
-
-        # Only train generator if discriminator is accurate <-- ???????
-        #if np.mean(self.discr_acc_list) >= self.discr_acc_threshold:
 
         # Discriminator prediction
         discr_pred_target = self.discr(out_logit_target)
@@ -566,6 +555,7 @@ class FeatureAdaption(EncoderDecoder):
         source_label = torch.ones((N, 1, d1, d2), dtype=torch.float).to('cuda')
 
         loss_feat = self.BCELoss(discr_pred_target, source_label)
+        loss_feat = self.lambda_discr * loss_feat
         losses_ = {'feature_adaptation.loss_feat': loss_feat}
         losses.update(losses_)
 
@@ -606,16 +596,15 @@ class FeatureAdaption(EncoderDecoder):
         correct_pred = 0.5*(np.mean(source_pred) + np.mean(target_pred))
         self.discr_acc_list.append(correct_pred * 100.)
 
-        print("Acc: ", correct_pred*100., " (avg. ", np.mean(self.discr_acc_list), ")")
-
+        #print("Acc: ", correct_pred*100., " (avg. ", np.mean(self.discr_acc_list), ")")
 
         #################
         #  Save models
         #################
         if self.iter_idx % self.save_interval == 0:
             print('Saving model')
-            save_model(self.backbone, self.decode_head, self.discr, 
-                        self.iter_idx, self.save_dir)
+            save_model(self.backbone_target, self.decode_head_target,
+                       self.discr, self.iter_idx, self.save_dir)
 
         # Reset iterators when cycled through
         if self.iter_idx % len(self.dataloader_target) == 0:
