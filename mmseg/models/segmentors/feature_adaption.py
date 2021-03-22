@@ -4,6 +4,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
+import os
+import pickle
+from collections import deque
 
 from mmseg.core import add_prefix
 from mmseg.ops import resize
@@ -42,6 +45,16 @@ class SequentialStateMachine():
             self.state = 0
         else:
             self.state = increment_state
+
+
+def save_model(backbone, decode_head, discr, iter_idx, path):
+    file_path = os.path.join(path, f'feat_adapt_iter_{iter_idx}.pkl')
+    model_dict = {'backbone': backbone.state_dict(),
+                  'decode_head': decode_head.state_dict(),
+                  'discr': discr.state_dict()}
+
+    with open(file_path, 'wb') as file:
+        pickle.dump(model_dict, file, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 @SEGMENTORS.register_module()
@@ -194,12 +207,12 @@ class FeatureAdaption(EncoderDecoder):
         ####################
         #  DISCRIMINATORS
         ####################
-        #if self.discr_type == 'feature':
-        #    self.discr = FeatDiscriminator(input_dim=self.discr_input_dim, output_dim=2, dropout_p=self.discr_dropout_p)
-        #elif self.discr_type == 'struct':
-        #    self.discr = StructDiscriminator(input_dim=self.discr_input_dim, output_dim=1, dropout_p=self.discr_dropout_p)
-        #else:
-        #    raise Exception(f"Invalid discriminator type: {self.discr_type}")
+        if self.discr_type == 'feature':
+            self.discr = FeatDiscriminator(input_dim=self.discr_input_dim, output_dim=2, dropout_p=self.discr_dropout_p)
+        elif self.discr_type == 'struct':
+            self.discr = StructDiscriminator(input_dim=self.discr_input_dim, output_dim=1, dropout_p=self.discr_dropout_p)
+        else:
+            raise Exception(f"Invalid discriminator type: {self.discr_type}")
 
         ################
         #  OPTIMIZERS
@@ -208,10 +221,16 @@ class FeatureAdaption(EncoderDecoder):
         #self.optimizer_discr = torch.optim.Adam(params, lr=self.discr_lr, weight_decay=0.0005, betas=(0.9, 0.99)) #momentum=self.sgd_momentum)
 
         self.KLDivLoss = nn.KLDivLoss(reduction='mean')
-        self.CrossEntropyLoss = nn.CrossEntropyLoss()
+        #self.CrossEntropyLoss = nn.CrossEntropyLoss(ignore_index=255)
+        self.BCELoss = nn.BCEWithLogitsLoss()
 
         optimization_stages = 2
         self.state_machine = SequentialStateMachine(optimization_stages)
+
+        self.discr_acc_list = deque(maxlen=100)
+        # So that generator is not optimized by chance
+        for _ in range(100):
+            self.discr_acc_list.append(0.)
 
     ############################
     #  SOURCE MODEL FUNCTIONS
@@ -477,7 +496,7 @@ class FeatureAdaption(EncoderDecoder):
         #  1: Supervised label loss
         ##################################
 
-        if optimization_state == 0:
+        if optimization_state != 6:
 
             # Encoder features from 'source' domain
             out_feat_source_s = self.extract_feat_source(img)
@@ -499,7 +518,7 @@ class FeatureAdaption(EncoderDecoder):
         #  NOTE: Source model is NOT optimized (static distribution)
         ################################################################
 
-        elif optimization_state == 1:
+        if optimization_state != 6:
 
             # Encoder features from 'target' domain
             with torch.no_grad():
@@ -518,22 +537,87 @@ class FeatureAdaption(EncoderDecoder):
             loss_cons = 0.5*(self.KLDivLoss(out_problog_source, out_prob_target)
                     + self.KLDivLoss(out_problog_target, out_prob_source))
             loss_cons = self.lambda_consis * loss_cons
-            losses_ = {'feature_adaption.loss_consistency': loss_cons}
+            losses_ = {'feature_adaptation.loss_consistency': loss_cons}
             losses.update(losses_)
         
         #############################
         #  3. Adapt model features
         #############################
 
+        ###
+        #ut_feat_source_s = self.extract_feat_source(img)
+        #out_logit_source = self.output_logits_source(out_feat_source_s, img_metas)
+
+        #out_feat_target_t = self.extract_feat_target(img_target)
+        #out_logit_target = self.output_logits_target(out_feat_target_t, img_metas)
+        ###
+
+        # Only train generator if discriminator is accurate <-- ???????
+        #if np.mean(self.discr_acc_list) >= self.discr_acc_threshold:
+
+        # Discriminator prediction
+        discr_pred_target = self.discr(out_logit_target)
+
+        # Dimensions for label
+        N, _, d1, d2 = discr_pred_target.shape
+
+        # Discriminator label
+        # NOTE: Reverse labels to train model to fool discriminator
+        source_label = torch.ones((N, 1, d1, d2), dtype=torch.float).to('cuda')
+
+        loss_feat = self.BCELoss(discr_pred_target, source_label)
+        losses_ = {'feature_adaptation.loss_feat': loss_feat}
+        losses.update(losses_)
+
         ############################
         #  4. Train discriminator
         ############################
 
-        #######################
-        #  OPTIMIZATION STEP
-        #######################
-        #self.optimizer_discr.step()
+        discr_pred_source = self.discr(out_logit_source.detach())  # (2,1,3,9)
+        discr_pred_target = self.discr(out_logit_target)  # (2,1,3,9)
 
+        discr_pred = torch.cat((discr_pred_source, discr_pred_target))  # (4,1,3,9)
+
+        # Dimensions for label
+        N, _, d1, d2 = discr_pred_source.shape
+
+        # Discriminator label
+        source_label = torch.ones((N, 1, d1, d2), dtype=torch.float)
+        target_label = torch.zeros((N, 1, d1, d2), dtype=torch.float)
+        discr_label = torch.cat((source_label, target_label)).to('cuda')  # (4,1,3,9)
+
+        loss_discr = self.BCELoss(discr_pred, discr_label)
+
+        losses_ = {'feature_adaptation.loss_discr': loss_discr}
+        losses.update(losses_)
+
+        ############################
+        #  Discriminator accuracy
+        ############################
+
+        discr_pred = discr_pred.detach().cpu().numpy()
+
+        source_pred = np.zeros(discr_pred[0:N].shape)
+        target_pred = np.zeros(discr_pred[N:].shape)
+        # Only consider confident prediction
+        source_pred[discr_pred[0:N] > 0.5] = 1.
+        target_pred[discr_pred[N:] <= -0.5] = 1.
+        
+        correct_pred = 0.5*(np.mean(source_pred) + np.mean(target_pred))
+        self.discr_acc_list.append(correct_pred * 100.)
+
+        print("Acc: ", correct_pred*100., " (avg. ", np.mean(self.discr_acc_list), ")")
+
+
+        #################
+        #  Save models
+        #################
+        if self.iter_idx % self.save_interval == 0:
+            print('Saving model')
+            save_model(self.backbone, self.decode_head, self.discr, 
+                        self.iter_idx, self.save_dir)
+
+        # Reset iterators when cycled through
         if self.iter_idx % len(self.dataloader_target) == 0:
                 self.dataloader_target_iter = enumerate(self.dataloader_target)
 
