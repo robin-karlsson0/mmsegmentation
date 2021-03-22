@@ -19,6 +19,31 @@ import matplotlib.pyplot as plt
 import torchvision.transforms as transforms
 
 
+class SequentialStateMachine():
+    """Finite state machine handling which optimization to perform every step.
+
+    States are represented as integeres [0, 1, ..., N-1]
+    Tranitions occur sequentially: state n --> state n+1
+    """
+    def __init__(self, state_count:int, initial_state:int=0):
+        self.state_count = state_count
+        self.state = initial_state
+    
+    def get_state(self):
+        """Returns current state and transition to new state.
+        """
+        current_state = self.state
+        self._update_state()
+        return current_state
+    
+    def _update_state(self):
+        increment_state = self.state + 1
+        if increment_state >= self.state_count:
+            self.state = 0
+        else:
+            self.state = increment_state
+
+
 @SEGMENTORS.register_module()
 class FeatureAdaption(EncoderDecoder):
     """
@@ -169,21 +194,24 @@ class FeatureAdaption(EncoderDecoder):
         ####################
         #  DISCRIMINATORS
         ####################
-        if self.discr_type == 'feature':
-            self.discr = FeatDiscriminator(input_dim=self.discr_input_dim, output_dim=2, dropout_p=self.discr_dropout_p)
-        elif self.discr_type == 'struct':
-            self.discr = StructDiscriminator(input_dim=self.discr_input_dim, output_dim=1, dropout_p=self.discr_dropout_p)
-        else:
-            raise Exception(f"Invalid discriminator type: {self.discr_type}")
+        #if self.discr_type == 'feature':
+        #    self.discr = FeatDiscriminator(input_dim=self.discr_input_dim, output_dim=2, dropout_p=self.discr_dropout_p)
+        #elif self.discr_type == 'struct':
+        #    self.discr = StructDiscriminator(input_dim=self.discr_input_dim, output_dim=1, dropout_p=self.discr_dropout_p)
+        #else:
+        #    raise Exception(f"Invalid discriminator type: {self.discr_type}")
 
         ################
         #  OPTIMIZERS
         ################
-        params = [p for p in self.discr.parameters() if p.requires_grad]
-        self.optimizer_discr = torch.optim.Adam(params, lr=self.discr_lr, weight_decay=0.0005, betas=(0.9, 0.99)) #momentum=self.sgd_momentum)
+        #params = [p for p in self.discr.parameters() if p.requires_grad]
+        #self.optimizer_discr = torch.optim.Adam(params, lr=self.discr_lr, weight_decay=0.0005, betas=(0.9, 0.99)) #momentum=self.sgd_momentum)
 
-        self.KLDivLoss = nn.KLDivLoss()
+        self.KLDivLoss = nn.KLDivLoss(reduction='mean')
         self.CrossEntropyLoss = nn.CrossEntropyLoss()
+
+        optimization_types = 2
+        self.state_machine = SequentialStateMachine(optimization_types)
 
     ############################
     #  SOURCE MODEL FUNCTIONS
@@ -196,20 +224,32 @@ class FeatureAdaption(EncoderDecoder):
         if self.with_neck:
             x = self.neck(x)
         return x
-
-    def encode_decode_source(self, img, img_metas):
-        """Encode images with backbone and decode into a semantic segmentation
-        map.
-            Args:
-                img: 
-                img_metas:
-        
-            Returns:
-                Logit tensor (batch_n, C, H, W)
+    
+    def output_logits_source(self, out_feat, img_metas):
         """
-        x = self.extract_feat_source(img)
-        out = self._decode_head_forward_test(x, img_metas)
-        return out
+        Args:
+            out_feat (batch_n, C, H, W): Encoder output features.
+            img_metas:
+        
+        Returns:
+            Logit tensor (batch_n, C, H, W)
+        """
+        out_logit = self._decode_head_forward_test(out_feat, img_metas)
+        return out_logit
+
+    #def encode_decode_source(self, img, img_metas):
+    #    """Encode images with backbone and decode into a semantic segmentation
+    #    map.
+    #        Args:
+    #            img: 
+    #            img_metas:
+    #    
+    #        Returns:
+    #            Logit tensor (batch_n, C, H, W)
+    #    """
+    #    x = self.extract_feat_source(img)
+    #    out = self._decode_head_forward_test(x, img_metas)
+    #    return out
 
     def _decode_head_forward_train_source(self, x, img_metas, gt_semantic_seg):
         """Run forward function and calculate loss for decode head in
@@ -222,7 +262,7 @@ class FeatureAdaption(EncoderDecoder):
         losses.update(add_prefix(loss_decode, 'decode_source'))
         return losses
 
-    def forward_train_source(self, x, img_metas, gt_semantic_seg):
+    def forward_train_source(self, x, img_metas, gt_semantic_seg, lambda_seg):
         """Forward function for training.
 
         Args:
@@ -234,14 +274,17 @@ class FeatureAdaption(EncoderDecoder):
                 `mmseg/datasets/pipelines/formatting.py:Collect`.
             gt_semantic_seg (Tensor): Semantic segmentation masks
                 used if the architecture supports semantic segmentation task.
+            lambda_seg (float): Loss weight value.
 
         Returns:
             dict[str, Tensor]: a dictionary of loss components
         """
         losses = dict()
 
-        loss_decode = self._decode_head_forward_train(x, img_metas,
+        loss_decode = self._decode_head_forward_train_source(x, img_metas,
                                                       gt_semantic_seg)
+        dict_key = 'decode_source.loss_seg'
+        loss_decode[dict_key] = lambda_seg*loss_decode[dict_key]
         losses.update(loss_decode)
 
         if self.with_auxiliary_head:
@@ -250,13 +293,6 @@ class FeatureAdaption(EncoderDecoder):
             losses.update(loss_aux)
 
         return losses
-    
-    #def model_forward(self, img, img_metas):
-    #    """
-    #    """
-    #    out = self.encode_decode(img, img_metas)
-    #    out = nn.Softmax2d()(out)
-    #    return out
 
     ############################
     #  TARGET MODEL FUNCTIONS
@@ -270,18 +306,31 @@ class FeatureAdaption(EncoderDecoder):
             x = self.neck_target(x)
         return x
 
+    def output_logits_target(self, out_feat, img_metas):
+        """Returns output logit tensor of without resizing.
+
+        Args:
+            out_feat (batch_n, C, H, W): Encoder output features.
+            img_metas:
+        
+        Returns:
+            Logit tensor (batch_n, C, H, W)
+        """
+        out_logit = self._decode_head_forward_test_target(out_feat, img_metas)
+        return out_logit
+
     def _decode_head_forward_test_target(self, x, img_metas):
         """Run forward function and calculate loss for decode head in
         inference."""
         seg_logits = self.decode_head_target.forward_test(x, img_metas, self.test_cfg)
         return seg_logits
     
-    def encode_decode_target(self, img, img_metas):
-        """
-        """
-        x = self.extract_feat_target(img)
-        out = self._decode_head_forward_test_target(x, img_metas)
-        return out
+    #def encode_decode_target(self, img, img_metas):
+    #    """
+    #    """
+    #    x = self.extract_feat_target(img)
+    #    out = self._decode_head_forward_test_target(x, img_metas)
+    #    return out
     
     #def model_forward_target(self, img, img_metas):
     #    """
@@ -318,7 +367,7 @@ class FeatureAdaption(EncoderDecoder):
 
         return losses
     
-    def forward_train_target(self, x, img_metas, gt_semantic_seg):
+    def forward_train_target(self, x, img_metas, gt_semantic_seg, lambda_seg):
         """Forward function for training.
 
         Args:
@@ -330,6 +379,7 @@ class FeatureAdaption(EncoderDecoder):
                 `mmseg/datasets/pipelines/formatting.py:Collect`.
             gt_semantic_seg (Tensor): Semantic segmentation masks
                 used if the architecture supports semantic segmentation task.
+            lambda_seg (float): Loss weight value.
 
         Returns:
             dict[str, Tensor]: a dictionary of loss components
@@ -339,6 +389,8 @@ class FeatureAdaption(EncoderDecoder):
 
         loss_decode = self._decode_head_forward_train_target(x, img_metas,
                                                             gt_semantic_seg)
+        dict_key = 'decode_target.loss_seg'
+        loss_decode[dict_key] = lambda_seg*loss_decode[dict_key]
         losses.update(loss_decode)
 
         if self.with_auxiliary_head:
@@ -395,6 +447,9 @@ class FeatureAdaption(EncoderDecoder):
                 averaging the logs.
         """
         self.iter_idx += 1
+        losses = dict()
+
+        optimization_state = self.state_machine.get_state()
 
         # Minibatch of normalized RGB image tensors with dim (N,C,H,W)
         img = data_batch['img']
@@ -415,68 +470,57 @@ class FeatureAdaption(EncoderDecoder):
 
         #img = self.domain_transformer.transform_img_batch(img)
 
-        # Encoder features
-
-        out_feat_source = self.extract_feat_source(img)
-        out_feat_target = self.extract_feat_target(img)
-
-        losses = dict()
+        # Output syntax
+        # out_TYPE_MODEL_INPUT
 
         ##################################
         #  1: Supervised label loss
         ##################################
 
-        # Source model
-        loss = self.forward_train_source(out_feat_source, img_metas, gt_semantic_seg)
-        losses.update(loss)
+        if optimization_state == 0:
 
-        # Target model
-        loss = self.forward_train_target(out_feat_target, img_metas, gt_semantic_seg)
-        losses.update(loss)
+            # Encoder features from 'source' domain
+            out_feat_source_s = self.extract_feat_source(img)
+            out_feat_target_s = self.extract_feat_target(img)
 
-        '''
-        # Target model
-        # img <-- source2target(img)
-        losses_ = self.forward_train_target(img, img_metas, gt_semantic_seg)
-        losses_['decode_target.loss_seg'] = self.lambda_seg * losses_['decode_target.loss_seg']
-        #losses.update(losses_)
+            # Source model
+            loss = self.forward_train_source(
+                out_feat_source_s, img_metas, gt_semantic_seg, self.lambda_seg)
+            losses.update(loss)
 
-        ################################
+            # Target model
+            loss = self.forward_train_target(
+                out_feat_target_s, img_metas, gt_semantic_seg, self.lambda_seg)
+            losses.update(loss)
+
+        ################################################################
         #  2. Target consistency loss
-        ################################
+        #  Regularize target model by penalizing deviation from task.
+        #  NOTE: Source model is NOT optimized (static distribution)
+        ################################################################
 
-        # Source model
-        out_source = self.encode_decode(img_target, img_metas)
-        out_source = resize(input=out_source, size=img_target.shape[2:], 
-            mode='bilinear', align_corners=self.align_corners)
-        out_source_prob = F.softmax(out_source, dim=1)
-        out_source_problog = F.log_softmax(out_source, dim=1)
+        elif optimization_state == 1:
 
-        # Target model
-        out_target = self.encode_decode_target(img_target, img_metas)
-        out_target = resize(input=out_target, size=img_target.shape[2:], 
-            mode='bilinear', align_corners=self.align_corners)
-        out_target_prob = F.softmax(out_target, dim=1)
-        out_target_problog = F.log_softmax(out_target, dim=1)
+            # Encoder features from 'target' domain
+            with torch.no_grad():
+                out_feat_source_t = self.extract_feat_source(img_target)
+            out_feat_target_t = self.extract_feat_target(img_target)
 
-        loss = (self.KLDivLoss(out_source_problog, out_target_prob)
-                + self.KLDivLoss(out_target_problog, out_source_prob))
+            with torch.no_grad():
+                out_logit_source = self.output_logits_source(out_feat_source_t, img_metas)
+                out_prob_source = F.softmax(out_logit_source, dim=1)
+                out_problog_source = F.log_softmax(out_logit_source, dim=1)
+
+            out_logit_target = self.output_logits_target(out_feat_target_t, img_metas)
+            out_prob_target = F.softmax(out_logit_target, dim=1)
+            out_problog_target = F.log_softmax(out_logit_target, dim=1)
+            
+            loss_cons = 0.5*(self.KLDivLoss(out_problog_source, out_prob_target)
+                    + self.KLDivLoss(out_problog_target, out_prob_source))
+            loss_cons = self.lambda_consis * loss_cons
+            losses_ = {'feature_adaption.loss_consistency': loss_cons}
+            losses.update(losses_)
         
-        loss = self.lambda_consis * loss
-        losses_ = {'feature_adaption.loss_consistency': loss}
-        #losses.update(losses_)
-
-        #out_source_pred = out_source_prob.argmax(dim=1)
-        
-        #out_target = self.model_forward_target(img_target, img_metas)
-
-        #print(out_source_pred.shape)
-        #print(out_target.shape)
-
-        #exit()
-        '''
-        
-
         #############################
         #  3. Adapt model features
         #############################
@@ -497,7 +541,7 @@ class FeatureAdaption(EncoderDecoder):
         # - Loss value for source model back propagatino
         loss, log_vars = self._parse_losses(losses)
 
-        print(loss.item())
+        #print(loss.item())
         
         outputs = dict(
             loss=loss,
