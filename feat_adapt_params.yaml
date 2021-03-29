@@ -10,8 +10,7 @@ lambda_seg: 1.
 lambda_consis: 10.
 lambda_discr: 0.001
 
-
-cropbox: !!python/tuple [256, 256] #[480, 1204]
+cropbox: !!python/tuple [480, 1208]
 source_subset: 'train'
 dataset_path_source: '/media/robin/Data/a2d2/camera_lidar_semantic/'  #'/var/datasets/feat_adapt_dataset/a2d2'
 dataset_path_target: '/media/robin/Data/feat_adapt_dataset/cityscapes'  #'/var/datasets/feat_adapt_dataset/cityscapes'
@@ -20,11 +19,13 @@ train_log_file: 'train_log.txt'
 # Output features: 19
 discr_input_dim: 19
 
-save_dir: 'exp2'
-save_interval: 100
+save_dir: 'exp1'
+save_interval: 1000
 
-load_dir: 'exp2'
-load_iter: 300
+load_dir: 'exp1'
+load_iter: #1000
+
+eval_model: 'target'  # 'source' or 'target'
 
 # backbone <-- UNTESTED
 # output

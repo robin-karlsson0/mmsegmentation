@@ -196,6 +196,7 @@ class FeatureAdaption(EncoderDecoder):
         self.save_interval = params['save_interval']
         self.load_dir = params['load_dir']
         self.load_iter = params['load_iter']
+        self.eval_model = params['eval_model']
         self.adaption_level = params['adaption_level']
         self.discr_type = params['discriminator']
         self.print_interval = int(params['print_interval'])
@@ -219,6 +220,7 @@ class FeatureAdaption(EncoderDecoder):
         print(f"save_interval:       {self.save_interval}")
         print(f"load_dir:            {self.load_dir}")
         print(f"load_iter:           {self.load_iter}")
+        print(f"eval_model:          {self.eval_model}")
         print(f"adaption_level:      {self.adaption_level}")
         print(f"discriminator:       {self.discr_type}")
         print(f"print_interval:      {self.print_interval}")
@@ -309,19 +311,11 @@ class FeatureAdaption(EncoderDecoder):
         out_logit = self._decode_head_forward_test(out_feat, img_metas)
         return out_logit
 
-    #def encode_decode_source(self, img, img_metas):
-    #    """Encode images with backbone and decode into a semantic segmentation
-    #    map.
-    #        Args:
-    #            img: 
-    #            img_metas:
-    #    
-    #        Returns:
-    #            Logit tensor (batch_n, C, H, W)
-    #    """
-    #    x = self.extract_feat_source(img)
-    #    out = self._decode_head_forward_test(x, img_metas)
-    #    return out
+    def _decode_head_forward_test_source(self, x, img_metas):
+        """Run forward function and calculate loss for decode head in
+        inference."""
+        seg_logits = self.decode_head.forward_test(x, img_metas, self.test_cfg)
+        return seg_logits
 
     def _decode_head_forward_train_source(self, x, img_metas, gt_semantic_seg):
         """Run forward function and calculate loss for decode head in
@@ -396,20 +390,6 @@ class FeatureAdaption(EncoderDecoder):
         inference."""
         seg_logits = self.decode_head_target.forward_test(x, img_metas, self.test_cfg)
         return seg_logits
-    
-    #def encode_decode_target(self, img, img_metas):
-    #    """
-    #    """
-    #    x = self.extract_feat_target(img)
-    #    out = self._decode_head_forward_test_target(x, img_metas)
-    #    return out
-    
-    #def model_forward_target(self, img, img_metas):
-    #    """
-    #    """
-    #    out = self.encode_decode_target(img, img_metas)
-    #    out = nn.Softmax2d()(out)
-    #    return out
 
     def _decode_head_forward_train_target(self, x, img_metas, gt_semantic_seg):
         """Run forward function and calculate loss for decode head in
@@ -472,6 +452,92 @@ class FeatureAdaption(EncoderDecoder):
 
         return losses
     
+    #########################
+    #  INFERENCE FUNCTIONS
+    #########################
+
+    def encode_decode_source(self, img, img_metas):
+        """Encode images with backbone and decode into a semantic segmentation
+        map of the same size as input."""
+        x = self.extract_feat_source(img)
+        out = self._decode_head_forward_test_source(x, img_metas)
+        out = resize(
+            input=out,
+            size=img.shape[2:],
+            mode='bilinear',
+            align_corners=self.align_corners)
+        return out
+
+    def encode_decode_target(self, img, img_metas):
+        """Encode images with backbone and decode into a semantic segmentation
+        map of the same size as input."""
+        x = self.extract_feat_target(img)
+        out = self._decode_head_forward_test_target(x, img_metas)
+        out = resize(
+            input=out,
+            size=img.shape[2:],
+            mode='bilinear',
+            align_corners=self.align_corners)
+        return out
+
+    def slide_inference(self, img, img_meta, rescale, model):
+        raise NotImplementedError
+
+    def whole_inference(self, img, img_meta, rescale, model):
+        """Inference with full image."""
+
+        if model == 'source':
+            seg_logit = self.encode_decode_source(img, img_meta)
+        elif model == 'target':
+            seg_logit = self.encode_decode_target(img, img_meta)
+        else:
+            raise Exception(f'Undefined model type ({model})')
+
+        if rescale:
+            seg_logit = resize(
+                seg_logit,
+                size=img_meta[0]['ori_shape'][:2],
+                mode='bilinear',
+                align_corners=self.align_corners,
+                warning=False)
+
+        return seg_logit
+
+    def inference(self, img, img_meta, rescale, model='source'):
+        """Inference with slide/whole style.
+
+        Args:
+            img (Tensor): The input image of shape (N, 3, H, W).
+            img_meta (dict): Image info dict where each dict has: 'img_shape',
+                'scale_factor', 'flip', and may also contain
+                'filename', 'ori_shape', 'pad_shape', and 'img_norm_cfg'.
+                For details on the values of these keys see
+                `mmseg/datasets/pipelines/formatting.py:Collect`.
+            rescale (bool): Whether rescale back to original shape.
+
+        Returns:
+            Tensor: The output segmentation map.
+        """
+
+        assert self.test_cfg.mode in ['slide', 'whole']
+        ori_shape = img_meta[0]['ori_shape']
+        assert all(_['ori_shape'] == ori_shape for _ in img_meta)
+        if self.test_cfg.mode == 'slide':
+            seg_logit = self.slide_inference(img, img_meta, rescale, model)
+        else:
+            seg_logit = self.whole_inference(img, img_meta, rescale, model)
+        output = F.softmax(seg_logit, dim=1)
+        flip = img_meta[0]['flip']
+        if flip:
+            flip_direction = img_meta[0]['flip_direction']
+            assert flip_direction in ['horizontal', 'vertical']
+            if flip_direction == 'horizontal':
+                output = output.flip(dims=(3, ))
+            elif flip_direction == 'vertical':
+                output = output.flip(dims=(2, ))
+
+        return output
+    
     ###################
     #  TRAINING CODE
     ###################
@@ -528,8 +594,8 @@ class FeatureAdaption(EncoderDecoder):
         img_metas = data_batch['img_metas']
         gt_semantic_seg = data_batch['gt_semantic_seg']  # (N,1,H,W)
 
-        #_, img_target = self.dataloader_target_iter.__next__()
-        #img_target = img_target.to('cuda')
+        _, img_target = self.dataloader_target_iter.__next__()
+        img_target = img_target.to('cuda')
 
         #a = np.transpose(img[0].cpu().numpy(), (1,2,0)).astype(np.uint8)
         #b = np.transpose(img[1].cpu().numpy(), (1,2,0)).astype(np.uint8)
@@ -553,34 +619,35 @@ class FeatureAdaption(EncoderDecoder):
 
         # Encoder features from 'source' domain
         out_feat_source_s = self.extract_feat_source(img)
-        #out_feat_target_s = self.extract_feat_target(img)
+        out_feat_target_s = self.extract_feat_target(img)
+
         # Source model
         loss = self.forward_train_source(
             out_feat_source_s, img_metas, gt_semantic_seg, self.lambda_seg)
         losses.update(loss)
 
         # Target model
-        #loss = self.forward_train_target(
-        #    out_feat_target_s, img_metas, gt_semantic_seg, self.lambda_seg)
-        #losses.update(loss)
+        loss = self.forward_train_target(
+            out_feat_target_s, img_metas, gt_semantic_seg, self.lambda_seg)
+        losses.update(loss)
 
         ################################################################
         #  2. Target consistency loss
         #  Regularize target model by penalizing deviation from task.
         #  NOTE: Source model is NOT optimized (static distribution)
         ################################################################
-        '''
+        
         #if optimization_state != 6:
 
         # Encoder features from 'target' domain
-        with torch.no_grad():
-            out_feat_source_t = self.extract_feat_source(img_target)
+        #with torch.no_grad():
+        out_feat_source_t = self.extract_feat_source(img_target)
         out_feat_target_t = self.extract_feat_target(img_target)
 
-        with torch.no_grad():
-            out_logit_source = self.output_logits_source(out_feat_source_t, img_metas)
-            out_prob_source = F.softmax(out_logit_source, dim=1)
-            out_problog_source = F.log_softmax(out_logit_source, dim=1)
+        #with torch.no_grad():
+        out_logit_source = self.output_logits_source(out_feat_source_t, img_metas)
+        out_prob_source = F.softmax(out_logit_source, dim=1)
+        out_problog_source = F.log_softmax(out_logit_source, dim=1)
 
         out_logit_target = self.output_logits_target(out_feat_target_t, img_metas)
         out_prob_target = F.softmax(out_logit_target, dim=1)
@@ -649,7 +716,6 @@ class FeatureAdaption(EncoderDecoder):
         self.discr_acc_list.append(correct_pred * 100.)
 
         #print("Acc: ", correct_pred*100., " (avg. ", np.mean(self.discr_acc_list), ")")
-        '''
 
         #################
         #  Save models
@@ -657,18 +723,16 @@ class FeatureAdaption(EncoderDecoder):
         if self.iter_idx % self.save_interval == 0:
             print('Saving model')
             self.save_model(self.iter_idx, self.save_dir, 'source')
-            #self.save_model(self.iter_idx, self.save_dir, 'target')
-            #self.save_model(self.iter_idx, self.save_dir, 'discr')
+            self.save_model(self.iter_idx, self.save_dir, 'target')
+            self.save_model(self.iter_idx, self.save_dir, 'discr')
 
         # Reset iterators when cycled through
         if self.iter_idx % len(self.dataloader_target) == 0:
-                self.dataloader_target_iter = enumerate(self.dataloader_target)
+            self.dataloader_target_iter = enumerate(self.dataloader_target)
 
         # loss: Scalar tensor consisting of summed loss terms
         # - Loss value for source model back propagatino
         loss, log_vars = self._parse_losses(losses)
-
-        #print(loss.item())
         
         outputs = dict(
             loss=loss,
@@ -683,10 +747,10 @@ class FeatureAdaption(EncoderDecoder):
 
         if self.load_iter != None:
             self.load_model(self.load_iter, self.load_dir, 'source')
-            #self.load_model(self.load_iter, self.load_dir, 'target')
+            self.load_model(self.load_iter, self.load_dir, 'target')
             #self.load_model(self.load_iter, self.load_dir, 'discr')
 
-        seg_logit = self.inference(img, img_meta, rescale)
+        seg_logit = self.inference(img, img_meta, rescale, self.eval_model)
         seg_pred = seg_logit.argmax(dim=1)
         if torch.onnx.is_in_onnx_export():
             # our inference backend only support 4D output
