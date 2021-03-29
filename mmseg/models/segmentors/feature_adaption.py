@@ -93,6 +93,47 @@ class FeatureAdaption(EncoderDecoder):
 
     """
 
+    def save_model(self, iter_idx, path, tag):
+
+        if tag == 'source':
+            model_dict = {
+                'backbone_source': self.backbone.state_dict(),
+                'decode_head_source': self.decode_head.state_dict()
+            }
+        elif tag == 'target':
+            model_dict = {
+                'backbone_target': self.backbone_target.state_dict(),
+                'decode_head_target': self.decode_head_target.state_dict()
+            }
+        elif tag == 'discr':
+            model_dict = {'discr': self.discr.state_dict()}
+        else:
+            raise Exception(f"Invalid model tag ({tag})")
+
+        file_path = os.path.join(path, f'feat_adapt_iter_{tag}_{iter_idx}.pkl')
+        with open(file_path, 'wb') as file:
+            pickle.dump(model_dict, file, protocol=pickle.HIGHEST_PROTOCOL)
+
+    def load_model(self, iter_idx, path, tag):
+
+        file_path = os.path.join(path, f'feat_adapt_iter_{tag}_{iter_idx}.pkl')
+        with open(file_path, 'rb') as file:
+            model_dict = pickle.load(file)
+
+        if tag == 'source':
+            self.backbone.load_state_dict(model_dict['backbone_source'])
+            self.decode_head.load_state_dict(model_dict['decode_head_source'])
+        elif tag == 'target':
+            self.backbone_target.load_state_dict(model_dict['backbone_target'])
+            self.decode_head_target.load_state_dict(model_dict['decode_head_target'])
+        elif tag =='discr':
+            self.discr.load_state_dict(model_dict['discr'])
+        else:
+            raise Exception(f"Invalid model tag ({tag})")
+
+
+
+
     def __init__(self,
                  backbone,
                  decode_head,
@@ -153,6 +194,8 @@ class FeatureAdaption(EncoderDecoder):
         self.discr_input_dim = params['discr_input_dim']
         self.save_dir = params['save_dir']
         self.save_interval = params['save_interval']
+        self.load_dir = params['load_dir']
+        self.load_iter = params['load_iter']
         self.adaption_level = params['adaption_level']
         self.discr_type = params['discriminator']
         self.print_interval = int(params['print_interval'])
@@ -174,6 +217,8 @@ class FeatureAdaption(EncoderDecoder):
         print(f"discr_input_dim:     {self.discr_input_dim}")
         print(f"save_dir:            {self.save_dir}")
         print(f"save_interval:       {self.save_interval}")
+        print(f"load_dir:            {self.load_dir}")
+        print(f"load_iter:           {self.load_iter}")
         print(f"adaption_level:      {self.adaption_level}")
         print(f"discriminator:       {self.discr_type}")
         print(f"print_interval:      {self.print_interval}")
@@ -232,6 +277,14 @@ class FeatureAdaption(EncoderDecoder):
         for _ in range(100):
             self.discr_acc_list.append(0.)
 
+        #################
+        #  LOAD MODELS
+        #################
+        if self.load_iter != None:
+            self.load_model(self.load_iter, self.load_dir, 'source')
+            #self.load_model(self.load_iter, self.load_dir, 'target')
+            #self.load_model(self.load_iter, self.load_dir, 'discr')
+        
     ############################
     #  SOURCE MODEL FUNCTIONS
     ############################
@@ -475,11 +528,11 @@ class FeatureAdaption(EncoderDecoder):
         img_metas = data_batch['img_metas']
         gt_semantic_seg = data_batch['gt_semantic_seg']  # (N,1,H,W)
 
-        _, img_target = self.dataloader_target_iter.__next__()
-        img_target = img_target.to('cuda')
+        #_, img_target = self.dataloader_target_iter.__next__()
+        #img_target = img_target.to('cuda')
 
         #a = np.transpose(img[0].cpu().numpy(), (1,2,0)).astype(np.uint8)
-        #b = np.transpose(img_target[0].cpu().numpy(), (1,2,0)).astype(np.uint8)
+        #b = np.transpose(img[1].cpu().numpy(), (1,2,0)).astype(np.uint8)
         #plt.subplot(1,2,1)
         #plt.imshow(a)
         #plt.subplot(1,2,2)
@@ -500,24 +553,23 @@ class FeatureAdaption(EncoderDecoder):
 
         # Encoder features from 'source' domain
         out_feat_source_s = self.extract_feat_source(img)
-        out_feat_target_s = self.extract_feat_target(img)
-
+        #out_feat_target_s = self.extract_feat_target(img)
         # Source model
         loss = self.forward_train_source(
             out_feat_source_s, img_metas, gt_semantic_seg, self.lambda_seg)
         losses.update(loss)
 
         # Target model
-        loss = self.forward_train_target(
-            out_feat_target_s, img_metas, gt_semantic_seg, self.lambda_seg)
-        losses.update(loss)
+        #loss = self.forward_train_target(
+        #    out_feat_target_s, img_metas, gt_semantic_seg, self.lambda_seg)
+        #losses.update(loss)
 
         ################################################################
         #  2. Target consistency loss
         #  Regularize target model by penalizing deviation from task.
         #  NOTE: Source model is NOT optimized (static distribution)
         ################################################################
-
+        '''
         #if optimization_state != 6:
 
         # Encoder features from 'target' domain
@@ -597,14 +649,16 @@ class FeatureAdaption(EncoderDecoder):
         self.discr_acc_list.append(correct_pred * 100.)
 
         #print("Acc: ", correct_pred*100., " (avg. ", np.mean(self.discr_acc_list), ")")
+        '''
 
         #################
         #  Save models
         #################
         if self.iter_idx % self.save_interval == 0:
             print('Saving model')
-            save_model(self.backbone_target, self.decode_head_target,
-                       self.discr, self.iter_idx, self.save_dir)
+            self.save_model(self.iter_idx, self.save_dir, 'source')
+            #self.save_model(self.iter_idx, self.save_dir, 'target')
+            #self.save_model(self.iter_idx, self.save_dir, 'discr')
 
         # Reset iterators when cycled through
         if self.iter_idx % len(self.dataloader_target) == 0:
@@ -624,3 +678,21 @@ class FeatureAdaption(EncoderDecoder):
         # Returns source model loss for optimization + logging info
         return outputs
     
+    def simple_test(self, img, img_meta, rescale=True):
+        """Simple test with single image."""
+
+        if self.load_iter != None:
+            self.load_model(self.load_iter, self.load_dir, 'source')
+            #self.load_model(self.load_iter, self.load_dir, 'target')
+            #self.load_model(self.load_iter, self.load_dir, 'discr')
+
+        seg_logit = self.inference(img, img_meta, rescale)
+        seg_pred = seg_logit.argmax(dim=1)
+        if torch.onnx.is_in_onnx_export():
+            # our inference backend only support 4D output
+            seg_pred = seg_pred.unsqueeze(0)
+            return seg_pred
+        seg_pred = seg_pred.cpu().numpy()
+        # unravel batch dim
+        seg_pred = list(seg_pred)
+        return seg_pred

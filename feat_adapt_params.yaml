@@ -20,8 +20,11 @@ train_log_file: 'train_log.txt'
 # Output features: 19
 discr_input_dim: 19
 
-save_dir: 'exp1'
-save_interval: 2000
+save_dir: 'exp2'
+save_interval: 100
+
+load_dir: 'exp2'
+load_iter: 300
 
 # backbone <-- UNTESTED
 # output
