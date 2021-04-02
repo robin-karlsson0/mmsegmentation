@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
 import os
+import glob
 
 from ada.fft_domain_transfer import transform_img_source2target, ImgFetcher
 
@@ -316,6 +317,8 @@ class FeatureAdaptionDatasetCityscapes(SemanticSegDataset):
     _, batch = dataloader_iter.__next__()
 
     batch --> [img_1, ..., img_N] for batch size N
+
+    TODO: Refactor
     """
 
     def __init__(self, root_dir, crop, target_adaption_path=None):
@@ -385,6 +388,56 @@ class FeatureAdaptionDatasetCityscapes(SemanticSegDataset):
         img = self.normalize(img)
 
         return img
+
+
+class FeatureAdaptionDatasetA2D2(SemanticSegDataset):
+    """
+    dataloader_iter = enumerate(dataloader)
+    
+    _, batch = dataloader_iter.__next__()
+
+    batch --> [img_1, ..., img_N] for batch size N
+    """
+    def __init__(self, root_dir, crop, target_adaption_path=None):
+        """
+        Args:
+            label: Integer (source, target) = (1, 0)
+        """
+        super().__init__(root_dir)
+
+        self.samples = glob.glob(f'{self.root_dir}/img_dir/train/*.png')
+        self.samples_N = len(self.samples)
+
+        self.crop_h = crop[0]
+        self.crop_w = crop[1]
+
+        self.normalize = transforms.Compose([
+            transforms.Normalize(
+                mean=[123.675, 116.28, 103.53],
+                std=[58.395, 57.12, 57.375])
+        ])
+
+    def __getitem__(self, idx):
+
+        filepath = self.samples[idx]
+        img = mmcv.imread(filepath, channel_order='bgr')
+
+        # Random crop
+        random_ratio_1 = np.random.random()
+        random_ratio_2 = np.random.random()
+        img = self._random_crop(img, random_ratio_1, random_ratio_2)
+
+        # Random horizontal flip
+        if np.random.random() > 0.5:
+            img = np.flip(img, axis=1)
+        
+        # Transpose image (H,W,C) --> (C,H,W)
+        img = np.transpose(img, (2,0,1))
+        img = torch.from_numpy(np.ascontiguousarray(img , dtype=np.float32))
+        img = self.normalize(img)
+
+        return img
+
 
 
 class FeatDiscriminator(torch.nn.Module):

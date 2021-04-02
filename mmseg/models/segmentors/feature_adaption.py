@@ -15,7 +15,7 @@ from ..builder import SEGMENTORS
 from .base import BaseSegmentor
 from .encoder_decoder import EncoderDecoder
 from ada.fft_domain_transfer import transform_img_source2target, ImgFetcher
-from ..utils.dataset import FeatureAdaptionDatasetCityscapes, FeatDiscriminator, StructDiscriminator, ImageDomainTransformer
+from ..utils.dataset import FeatureAdaptionDatasetCityscapes, FeatureAdaptionDatasetA2D2, FeatDiscriminator, StructDiscriminator, ImageDomainTransformer
 import yaml
 
 import matplotlib.pyplot as plt
@@ -45,16 +45,6 @@ class SequentialStateMachine():
             self.state = 0
         else:
             self.state = increment_state
-
-
-def save_model(backbone, decode_head, discr, iter_idx, path):
-    file_path = os.path.join(path, f'feat_adapt_iter_{iter_idx}.pkl')
-    model_dict = {'backbone': backbone.state_dict(),
-                  'decode_head': decode_head.state_dict(),
-                  'discr': discr.state_dict()}
-
-    with open(file_path, 'wb') as file:
-        pickle.dump(model_dict, file, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 @SEGMENTORS.register_module()
@@ -92,48 +82,6 @@ class FeatureAdaption(EncoderDecoder):
     losses.update(losses_)
 
     """
-
-    def save_model(self, iter_idx, path, tag):
-
-        if tag == 'source':
-            model_dict = {
-                'backbone_source': self.backbone.state_dict(),
-                'decode_head_source': self.decode_head.state_dict()
-            }
-        elif tag == 'target':
-            model_dict = {
-                'backbone_target': self.backbone_target.state_dict(),
-                'decode_head_target': self.decode_head_target.state_dict()
-            }
-        elif tag == 'discr':
-            model_dict = {'discr': self.discr.state_dict()}
-        else:
-            raise Exception(f"Invalid model tag ({tag})")
-
-        file_path = os.path.join(path, f'feat_adapt_iter_{tag}_{iter_idx}.pkl')
-        with open(file_path, 'wb') as file:
-            pickle.dump(model_dict, file, protocol=pickle.HIGHEST_PROTOCOL)
-
-    def load_model(self, iter_idx, path, tag):
-
-        file_path = os.path.join(path, f'feat_adapt_iter_{tag}_{iter_idx}.pkl')
-        with open(file_path, 'rb') as file:
-            model_dict = pickle.load(file)
-
-        if tag == 'source':
-            self.backbone.load_state_dict(model_dict['backbone_source'])
-            self.decode_head.load_state_dict(model_dict['decode_head_source'])
-        elif tag == 'target':
-            self.backbone_target.load_state_dict(model_dict['backbone_target'])
-            self.decode_head_target.load_state_dict(model_dict['decode_head_target'])
-        elif tag =='discr':
-            self.discr.load_state_dict(model_dict['discr'])
-        else:
-            raise Exception(f"Invalid model tag ({tag})")
-
-
-
-
     def __init__(self,
                  backbone,
                  decode_head,
@@ -240,9 +188,10 @@ class FeatureAdaption(EncoderDecoder):
         ##############
         #  DATASETS
         ##############
-        self.dataset_target = FeatureAdaptionDatasetCityscapes(
-            self.dataset_path_target, self.cropbox) 
-            #target_adaption_path=self.dataset_path_source)
+        #self.dataset_target = FeatureAdaptionDatasetCityscapes(
+        #    self.dataset_path_target, self.cropbox)
+        self.dataset_target = FeatureAdaptionDatasetA2D2(
+            self.dataset_path_target, self.cropbox)
         self.dataloader_target = DataLoader(
             self.dataset_target, batch_size=self.batch_size, shuffle=True, 
             pin_memory=True, num_workers=self.num_workers)
@@ -271,8 +220,8 @@ class FeatureAdaption(EncoderDecoder):
         #self.CrossEntropyLoss = nn.CrossEntropyLoss(ignore_index=255)
         self.BCELoss = nn.BCEWithLogitsLoss()
 
-        optimization_stages = 2
-        self.state_machine = SequentialStateMachine(optimization_stages)
+        #optimization_stages = 2
+        #self.state_machine = SequentialStateMachine(optimization_stages)
 
         self.discr_acc_list = deque(maxlen=100)
         # So that generator is not optimized by chance
@@ -282,8 +231,8 @@ class FeatureAdaption(EncoderDecoder):
         #################
         #  LOAD MODELS
         #################
-        if self.load_iter != None:
-            self.load_model(self.load_iter, self.load_dir, 'source')
+        #if self.load_iter != None:
+            #self.load_model(self.load_iter, self.load_dir, 'source')
             #self.load_model(self.load_iter, self.load_dir, 'target')
             #self.load_model(self.load_iter, self.load_dir, 'discr')
         
@@ -598,7 +547,7 @@ class FeatureAdaption(EncoderDecoder):
         img_target = img_target.to('cuda')
 
         #a = np.transpose(img[0].cpu().numpy(), (1,2,0)).astype(np.uint8)
-        #b = np.transpose(img[1].cpu().numpy(), (1,2,0)).astype(np.uint8)
+        #b = np.transpose(img_target[0].cpu().numpy(), (1,2,0)).astype(np.uint8)
         #plt.subplot(1,2,1)
         #plt.imshow(a)
         #plt.subplot(1,2,2)
@@ -614,8 +563,6 @@ class FeatureAdaption(EncoderDecoder):
         ##################################
         #  1: Supervised label loss
         ##################################
-
-        #if optimization_state != 6:
 
         # Encoder features from 'source' domain
         out_feat_source_s = self.extract_feat_source(img)
@@ -636,19 +583,15 @@ class FeatureAdaption(EncoderDecoder):
         #  Regularize target model by penalizing deviation from task.
         #  NOTE: Source model is NOT optimized (static distribution)
         ################################################################
-        
-        #if optimization_state != 6:
 
         # Encoder features from 'target' domain
-        #with torch.no_grad():
-        out_feat_source_t = self.extract_feat_source(img_target)
+        with torch.no_grad():
+            out_feat_source_t = self.extract_feat_source(img_target)
+            out_logit_source = self.output_logits_source(out_feat_source_t, img_metas)
+            out_prob_source = F.softmax(out_logit_source, dim=1)
+            out_problog_source = F.log_softmax(out_logit_source, dim=1)
+
         out_feat_target_t = self.extract_feat_target(img_target)
-
-        #with torch.no_grad():
-        out_logit_source = self.output_logits_source(out_feat_source_t, img_metas)
-        out_prob_source = F.softmax(out_logit_source, dim=1)
-        out_problog_source = F.log_softmax(out_logit_source, dim=1)
-
         out_logit_target = self.output_logits_target(out_feat_target_t, img_metas)
         out_prob_target = F.softmax(out_logit_target, dim=1)
         out_problog_target = F.log_softmax(out_logit_target, dim=1)
@@ -746,9 +689,12 @@ class FeatureAdaption(EncoderDecoder):
         """Simple test with single image."""
 
         if self.load_iter != None:
-            self.load_model(self.load_iter, self.load_dir, 'source')
-            self.load_model(self.load_iter, self.load_dir, 'target')
-            #self.load_model(self.load_iter, self.load_dir, 'discr')
+            if self.eval_model == 'source':
+                self.load_model_(self.load_iter, self.load_dir, 'source')
+            elif self.eval_model == 'target':
+                self.load_model(self.load_iter, self.load_dir, 'target')
+            else:
+                raise Exception(f"Undefined model selected ({self.eval_model})")
 
         seg_logit = self.inference(img, img_meta, rescale, self.eval_model)
         seg_pred = seg_logit.argmax(dim=1)
@@ -760,3 +706,41 @@ class FeatureAdaption(EncoderDecoder):
         # unravel batch dim
         seg_pred = list(seg_pred)
         return seg_pred
+    
+    def save_model(self, iter_idx, path, tag):
+
+        if tag == 'source':
+            model_dict = {
+                'backbone_source': self.backbone.state_dict(),
+                'decode_head_source': self.decode_head.state_dict()
+            }
+        elif tag == 'target':
+            model_dict = {
+                'backbone_target': self.backbone_target.state_dict(),
+                'decode_head_target': self.decode_head_target.state_dict()
+            }
+        elif tag == 'discr':
+            model_dict = {'discr': self.discr.state_dict()}
+        else:
+            raise Exception(f"Invalid model tag ({tag})")
+
+        file_path = os.path.join(path, f'feat_adapt_iter_{tag}_{iter_idx}.pkl')
+        with open(file_path, 'wb') as file:
+            pickle.dump(model_dict, file, protocol=pickle.HIGHEST_PROTOCOL)
+
+    def load_model(self, iter_idx, path, tag):
+
+        file_path = os.path.join(path, f'feat_adapt_iter_{tag}_{iter_idx}.pkl')
+        with open(file_path, 'rb') as file:
+            model_dict = pickle.load(file)
+
+        if tag == 'source':
+            self.backbone.load_state_dict(model_dict['backbone_source'])
+            self.decode_head.load_state_dict(model_dict['decode_head_source'])
+        elif tag == 'target':
+            self.backbone_target.load_state_dict(model_dict['backbone_target'])
+            self.decode_head_target.load_state_dict(model_dict['decode_head_target'])
+        elif tag =='discr':
+            self.discr.load_state_dict(model_dict['discr'])
+        else:
+            raise Exception(f"Invalid model tag ({tag})")
