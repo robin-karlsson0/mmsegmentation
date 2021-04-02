@@ -12,11 +12,6 @@ from ada.fft_domain_transfer import transform_img_source2target, ImgFetcher
 import matplotlib.pyplot as plt
 import copy
 
-#def transform_batch_source2target(img):
-
-#    img = transform_img_source2target(img, trg_img, beta=self.fft_beta)
-
-
 class ImageDomainTransformer:
     """
     """
@@ -206,7 +201,7 @@ class SemanticSegDataset(Dataset):
 
         return img
 
-
+# OBSOLETE
 class SourceDatasetA2D2(SemanticSegDataset):
     """
     dataloader_iter = enumerate(dataloader)
@@ -309,7 +304,7 @@ class SourceDatasetA2D2(SemanticSegDataset):
 
         return img, ann
 
-
+# OBSOLETE
 class FeatureAdaptionDatasetCityscapes(SemanticSegDataset):
     """
     dataloader_iter = enumerate(dataloader)
@@ -389,7 +384,7 @@ class FeatureAdaptionDatasetCityscapes(SemanticSegDataset):
 
         return img
 
-
+# OBSOLETE
 class FeatureAdaptionDatasetA2D2(SemanticSegDataset):
     """
     dataloader_iter = enumerate(dataloader)
@@ -438,6 +433,63 @@ class FeatureAdaptionDatasetA2D2(SemanticSegDataset):
 
         return img
 
+
+class TargetDataset(SemanticSegDataset):
+    '''Dataset class returning input images from the 'target' dataset.
+    '''
+    def __init__(self, root_dir, crop, dataset):
+        '''
+        Args:
+            root_dir (str): Absolute path to the root of each dataset.
+                            ../a2d2/camera_lidar_semantic/
+                            ../cityscapes/
+            crop (int,int): Tuple of (height, width).
+            dataset (str): 'a2d2' or 'cityscapes'
+        '''
+        if dataset == 'a2d2':
+            self.samples = glob.glob(f'{root_dir}/img_dir/train/*.png')
+        elif dataset == 'cityscapes':
+            self.samples = glob.glob(f'{root_dir}/leftImg8bit/train/*/*.png')
+        else:
+            raise Exception('Invalid dataset type:', dataset)
+
+        # Check for empty sample list
+        if not self.samples:
+            raise Exception(f"No samples loaded in TargetDataset\n  {root_dir}\n  {dataset}")
+
+        self.samples_N = len(self.samples)
+
+        self.crop_h = crop[0]
+        self.crop_w = crop[1]
+
+        self.normalize = transforms.Compose([
+            transforms.Normalize(
+                mean=[123.675, 116.28, 103.53],
+                std=[58.395, 57.12, 57.375])
+        ])
+
+    def __getitem__(self, idx):
+        '''Returns a cropped, flipped, and normalized sample by index.
+        NOTE: Images are read as BGR to match the mmsegmentation dataloader images.
+        '''
+        filepath = self.samples[idx]
+        img = mmcv.imread(filepath, channel_order='bgr')
+
+        # Random crop
+        random_ratio_1 = np.random.random()
+        random_ratio_2 = np.random.random()
+        img = self._random_crop(img, random_ratio_1, random_ratio_2)
+
+        # Random horizontal flip
+        if np.random.random() > 0.5:
+            img = np.flip(img, axis=1)
+        
+        # Transpose image (H,W,C) --> (C,H,W)
+        img = np.transpose(img, (2,0,1))
+        img = torch.from_numpy(np.ascontiguousarray(img , dtype=np.float32))
+        img = self.normalize(img)
+
+        return img
 
 
 class FeatDiscriminator(torch.nn.Module):

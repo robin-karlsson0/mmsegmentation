@@ -15,36 +15,12 @@ from ..builder import SEGMENTORS
 from .base import BaseSegmentor
 from .encoder_decoder import EncoderDecoder
 from ada.fft_domain_transfer import transform_img_source2target, ImgFetcher
-from ..utils.dataset import FeatureAdaptionDatasetCityscapes, FeatureAdaptionDatasetA2D2, FeatDiscriminator, StructDiscriminator, ImageDomainTransformer
+from ..utils.dataset import TargetDataset, FeatDiscriminator, StructDiscriminator, ImageDomainTransformer
 import yaml
 
+import cv2
 import matplotlib.pyplot as plt
 import torchvision.transforms as transforms
-
-
-class SequentialStateMachine():
-    """Finite state machine handling which optimization to perform every step.
-
-    States are represented as integeres [0, 1, ..., N-1]
-    Tranitions occur sequentially: state n --> state n+1
-    """
-    def __init__(self, state_count:int, initial_state:int=0):
-        self.state_count = state_count
-        self.state = initial_state
-    
-    def get_state(self):
-        """Returns current state and transition to new state.
-        """
-        current_state = self.state
-        self._update_state()
-        return current_state
-    
-    def _update_state(self):
-        increment_state = self.state + 1
-        if increment_state >= self.state_count:
-            self.state = 0
-        else:
-            self.state = increment_state
 
 
 @SEGMENTORS.register_module()
@@ -125,19 +101,15 @@ class FeatureAdaption(EncoderDecoder):
         with open("feat_adapt_params.yaml") as file:
             params = yaml.full_load(file)
 
-        self.discr_lr = float(params['discr_lr'])
-        self.model_lr = float(params['model_lr'])
-        self.sgd_momentum = float(params['sgd_momentum'])
-        self.batch_size = int(params['batch_size'])
+        self.target_batch_size = int(params['target_batch_size'])
         self.discr_dropout_p = float(params['discr_dropout_p'])
         self.discr_acc_threshold = float(params['discr_acc_threshold'])
         self.lambda_seg = float(params['lambda_seg'])
         self.lambda_consis = float(params['lambda_consis'])
         self.lambda_discr = float(params['lambda_discr'])
-        self.cropbox = params['cropbox']  # (512, 1024)
-        self.source_subset = params['source_subset']
-        self.dataset_path_source = params['dataset_path_source']
-        self.dataset_path_target = params['dataset_path_target']
+        self.target_dataset = params['target_dataset']
+        self.target_dataset_path = params['target_dataset_path']
+        self.cropbox = params['cropbox']
         self.train_log_file = params['train_log_file']
         self.discr_input_dim = params['discr_input_dim']
         self.save_dir = params['save_dir']
@@ -147,21 +119,16 @@ class FeatureAdaption(EncoderDecoder):
         self.eval_model = params['eval_model']
         self.adaption_level = params['adaption_level']
         self.discr_type = params['discriminator']
-        self.print_interval = int(params['print_interval'])
         self.num_workers = int(params['num_workers'])
-        print(f"discr_lr:            {self.discr_lr}")
-        print(f"model_lr:            {self.model_lr}")
-        print(f"momentum:            {self.sgd_momentum}")
-        print(f"batch_size:          {self.batch_size}")
+        print(f"target_batch_size:   {self.target_batch_size}")
         print(f"discr_dropout_p:     {self.discr_dropout_p}")
         print(f"discr_acc_threshold: {self.discr_acc_threshold}")
         print(f"lambda_seg:          {self.lambda_seg}")
         print(f"lambda_consis:       {self.lambda_consis}")
         print(f"lambda_discr:        {self.lambda_discr}")
+        print(f"target_dataset:      {self.target_dataset}")
+        print(f"target_dataset_path: {self.target_dataset_path}")
         print(f"cropbox:             {self.cropbox}")
-        print(f"source_subset:       {self.source_subset}")
-        print(f"dataset_path_source: {self.dataset_path_source}")
-        print(f"dataset_path_target: {self.dataset_path_target}")
         print(f"train_log_file:      {self.train_log_file}")
         print(f"discr_input_dim:     {self.discr_input_dim}")
         print(f"save_dir:            {self.save_dir}")
@@ -171,7 +138,6 @@ class FeatureAdaption(EncoderDecoder):
         print(f"eval_model:          {self.eval_model}")
         print(f"adaption_level:      {self.adaption_level}")
         print(f"discriminator:       {self.discr_type}")
-        print(f"print_interval:      {self.print_interval}")
         print(f"num_workers:         {self.num_workers}\n")
 
         # Reset training log file
@@ -181,19 +147,17 @@ class FeatureAdaption(EncoderDecoder):
         ############################
         #  DOMAIN TRANSFORMATIONS
         ############################
-        fft_beta = 2.35  # ???
-        self.domain_transformer = ImageDomainTransformer(
-            self.dataset_path_target, fft_beta, self.cropbox)
+        #fft_beta = 2.35  # ???
+        #self.domain_transformer = ImageDomainTransformer(
+        #    self.target_dataset_path, fft_beta, self.cropbox)
 
         ##############
         #  DATASETS
         ##############
-        #self.dataset_target = FeatureAdaptionDatasetCityscapes(
-        #    self.dataset_path_target, self.cropbox)
-        self.dataset_target = FeatureAdaptionDatasetA2D2(
-            self.dataset_path_target, self.cropbox)
+        self.dataset_target = TargetDataset(
+            self.target_dataset_path, self.cropbox, self.target_dataset)
         self.dataloader_target = DataLoader(
-            self.dataset_target, batch_size=self.batch_size, shuffle=True, 
+            self.dataset_target, batch_size=self.target_batch_size, shuffle=True, 
             pin_memory=True, num_workers=self.num_workers)
         # Dataloader iterators
         self.dataloader_target_iter = enumerate(self.dataloader_target)
@@ -220,9 +184,6 @@ class FeatureAdaption(EncoderDecoder):
         #self.CrossEntropyLoss = nn.CrossEntropyLoss(ignore_index=255)
         self.BCELoss = nn.BCEWithLogitsLoss()
 
-        #optimization_stages = 2
-        #self.state_machine = SequentialStateMachine(optimization_stages)
-
         self.discr_acc_list = deque(maxlen=100)
         # So that generator is not optimized by chance
         for _ in range(100):
@@ -231,10 +192,10 @@ class FeatureAdaption(EncoderDecoder):
         #################
         #  LOAD MODELS
         #################
-        #if self.load_iter != None:
-            #self.load_model(self.load_iter, self.load_dir, 'source')
-            #self.load_model(self.load_iter, self.load_dir, 'target')
-            #self.load_model(self.load_iter, self.load_dir, 'discr')
+        if self.load_iter != None:
+            self.load_model(self.load_iter, self.load_dir, 'source')
+            self.load_model(self.load_iter, self.load_dir, 'target')
+            self.load_model(self.load_iter, self.load_dir, 'discr')
         
     ############################
     #  SOURCE MODEL FUNCTIONS
@@ -549,9 +510,9 @@ class FeatureAdaption(EncoderDecoder):
         #a = np.transpose(img[0].cpu().numpy(), (1,2,0)).astype(np.uint8)
         #b = np.transpose(img_target[0].cpu().numpy(), (1,2,0)).astype(np.uint8)
         #plt.subplot(1,2,1)
-        #plt.imshow(a)
+        #plt.imshow(cv2.cvtColor(a, cv2.COLOR_BGR2RGB))
         #plt.subplot(1,2,2)
-        #plt.imshow(b)
+        #plt.imshow(cv2.cvtColor(b, cv2.COLOR_BGR2RGB))
         #plt.show()
         #exit()
 
@@ -710,37 +671,70 @@ class FeatureAdaption(EncoderDecoder):
     def save_model(self, iter_idx, path, tag):
 
         if tag == 'source':
-            model_dict = {
-                'backbone_source': self.backbone.state_dict(),
-                'decode_head_source': self.decode_head.state_dict()
-            }
+            # Backbone
+            file_path = os.path.join(path, f'backbone_source_{iter_idx}.pth') 
+            torch.save(self.backbone.state_dict(), file_path)
+            # Decode head
+            file_path = os.path.join(path, f'decode_head_source_{iter_idx}.pth')
+            torch.save(self.decode_head.state_dict(), file_path)
+            #model_dict = {
+            #    'backbone_source': self.backbone.state_dict(),
+            #    'decode_head_source': self.decode_head.state_dict()
+            #}
         elif tag == 'target':
-            model_dict = {
-                'backbone_target': self.backbone_target.state_dict(),
-                'decode_head_target': self.decode_head_target.state_dict()
-            }
+            # Backbone
+            file_path = os.path.join(path, f'backbone_target_{iter_idx}.pth') 
+            torch.save(self.backbone_target.state_dict(), file_path)
+            # Decode head
+            file_path = os.path.join(path, f'decode_head_target_{iter_idx}.pth')
+            torch.save(self.decode_head_target.state_dict(), file_path)
+            #model_dict = {
+            #    'backbone_target': self.backbone_target.state_dict(),
+            #    'decode_head_target': self.decode_head_target.state_dict()
+            #}
         elif tag == 'discr':
-            model_dict = {'discr': self.discr.state_dict()}
+            file_path = os.path.join(path, f'discr_{iter_idx}.pth')
+            torch.save(self.discr.state_dict(), file_path)
+            #model_dict = {'discr': self.discr.state_dict()}
         else:
             raise Exception(f"Invalid model tag ({tag})")
 
-        file_path = os.path.join(path, f'feat_adapt_iter_{tag}_{iter_idx}.pkl')
-        with open(file_path, 'wb') as file:
-            pickle.dump(model_dict, file, protocol=pickle.HIGHEST_PROTOCOL)
+        #file_path = os.path.join(path, f'feat_adapt_iter_{tag}_{iter_idx}.pkl')
+        #with open(file_path, 'wb') as file:
+        #    pickle.dump(model_dict, file, protocol=pickle.HIGHEST_PROTOCOL)
 
     def load_model(self, iter_idx, path, tag):
 
-        file_path = os.path.join(path, f'feat_adapt_iter_{tag}_{iter_idx}.pkl')
-        with open(file_path, 'rb') as file:
-            model_dict = pickle.load(file)
+        #file_path = os.path.join(path, f'feat_adapt_iter_{tag}_{iter_idx}.pkl')
+        #with open(file_path, 'rb') as file:
+        #    model_dict = pickle.load(file)
 
         if tag == 'source':
-            self.backbone.load_state_dict(model_dict['backbone_source'])
-            self.decode_head.load_state_dict(model_dict['decode_head_source'])
+            # Backbone
+            file_path = os.path.join(path, f'backbone_source_{iter_idx}.pth')
+            state_dict = torch.load(file_path)
+            self.backbone.load_state_dict(state_dict)
+            # Decode head
+            file_path = os.path.join(path, f'decode_head_source_{iter_idx}.pth')
+            state_dict = torch.load(file_path)
+            self.decode_head.load_state_dict(state_dict)
+            #self.backbone.load_state_dict(model_dict['backbone_source'])
+            #self.decode_head.load_state_dict(model_dict['decode_head_source'])
         elif tag == 'target':
-            self.backbone_target.load_state_dict(model_dict['backbone_target'])
-            self.decode_head_target.load_state_dict(model_dict['decode_head_target'])
+            file_path = os.path.join(path, f'backbone_target_{iter_idx}.pth')
+            state_dict = torch.load(file_path)
+            self.backbone_target.load_state_dict(state_dict)
+            # Decode head
+            file_path = os.path.join(path, f'decode_head_target_{iter_idx}.pth')
+            state_dict = torch.load(file_path)
+            self.decode_head_target.load_state_dict(state_dict)
+            #self.backbone_target.load_state_dict(model_dict['backbone_target'])
+            #self.decode_head_target.load_state_dict(model_dict['decode_head_target'])
         elif tag =='discr':
-            self.discr.load_state_dict(model_dict['discr'])
+            file_path = os.path.join(path, f'discr_{iter_idx}.pth')
+            state_dict = torch.load(file_path)
+            self.discr.load_state_dict(state_dict)
+            #self.discr.load_state_dict(model_dict['discr'])
         else:
             raise Exception(f"Invalid model tag ({tag})")
+        
