@@ -197,7 +197,15 @@ def transform_img_a2d2(sample):
     trans_src_img = transform_img_source2target(src_img, trg_img, beta)
 
     img_filename = os.path.split(img_path)[-1]
-    trans_src_img.save(os.path.join(dest_path, img_filename))
+
+    # Parse 'city' subdirectory
+    idx = img_filename.index('_')
+    city = img_filename[:idx]
+    dest_path_city = os.path.join(dest_path, city)
+    if os.path.isdir(dest_path_city) == False:
+        os.mkdir(dest_path_city)
+
+    trans_src_img.save(os.path.join(dest_path_city, img_filename))
 
 
 def transfer_a2d2_to_cityscapes(a2d2_path, cityscapes_path, dest_path, beta=0.0015, nproc=1):
