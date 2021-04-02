@@ -3,6 +3,7 @@ import torch
 import random
 import os
 import fnmatch
+import glob
 from PIL import Image
 import matplotlib.pyplot as plt
 from multiprocessing import Pool
@@ -169,7 +170,7 @@ def transform_img_source2target(src_img, trg_img, beta=0.01):
     return transformed_src_img
 
 
-def transform_img(sample):
+def transform_img_cityscapes(sample):
 
     img_path, trg_img_path, dest_path, beta = sample
 
@@ -177,6 +178,21 @@ def transform_img(sample):
     trg_img = read_image(trg_img_path)
 
     trg_img = resize_img_cityscapes_to_a2d2(trg_img)
+
+    trans_src_img = transform_img_source2target(src_img, trg_img, beta)
+
+    img_filename = os.path.split(img_path)[-1]
+    trans_src_img.save(os.path.join(dest_path, img_filename))
+
+
+def transform_img_a2d2(sample):
+
+    img_path, trg_img_path, dest_path, beta = sample
+
+    src_img = read_image(img_path)
+    trg_img = read_image(trg_img_path)
+
+    trg_img = resize_img_a2d2_to_cityscapes(trg_img)
 
     trans_src_img = transform_img_source2target(src_img, trg_img, beta)
 
@@ -211,27 +227,51 @@ def transfer_a2d2_to_cityscapes(a2d2_path, cityscapes_path, dest_path, beta=0.00
 
     print("Transforming images")
     with Pool(nproc) as p:
-        p.map(transform_img, samples)
+        p.map(transform_img_cityscapes, samples)
+
+
+def transfer_cityscapes_to_a2d2(cityscapes_path, a2d2_path, dest_path, beta=0.0015, nproc=1):
+    '''
+    Args:
+        cityscapes_path: Path to 'cityscapes/leftImg8bit/train/' etc.
+        a2d2_path: Path to 'a2d2/.../img_dir/train' etc.
+        dest_path: Path to 'cityscapes_trans/leftImg8bit/train/' etc.
+    '''
+    # Read all Cityscapes image paths
+    img_paths = glob.glob(f'{cityscapes_path}/*/*leftImg8bit.png')
+
+    # Initialize target image fetcher
+    img_fetcher = ImgFetcher(a2d2_path)
+
+    print("Arranging (src, trg) samples")
+    samples = []
+    N = len(img_paths)
+    for idx, img_path in enumerate(img_paths):
+        print(f"    Sample {idx}/{N} ({idx/N*100.}%)\r", end="")
+        trg_img_path = img_fetcher.get_img_path()
+        samples.append( (img_path, trg_img_path, dest_path, beta) )
+    print(f"    Sample {N}/{N} ({(N)/N*100.}%)                ")
+
+    print("Transforming images")
+    with Pool(nproc) as p:
+        p.map(transform_img_a2d2, samples)
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
         description='Convert A2D2 <--> Cityscapes image style as low-level feature adaption')
     parser.add_argument(
-        'src_path', type=str,
-        help='Example: a2d2/.../img_dir/train')
+        'src', type=str, help='a2d2 or cityscapes')
     parser.add_argument(
-        'trg_path', type=str,
-        help='Example: cityscapes/leftImg8bit/train')
+        'src_path', type=str, help='Example: a2d2/.../img_dir/train')
     parser.add_argument(
-        'out_path', type=str,
-        help='Example: a2d2_trans/img_dir/train')
+        'trg_path', type=str, help='Example: cityscapes/leftImg8bit/train')
+    parser.add_argument(
+        'out_path', type=str, help='Example: a2d2_trans/img_dir/train')
     parser.add_argument(
         '--beta', default=0.01, type=float,
-        help='Beta value for FDA (A2D2: 0.0015, Cityscapes: 0.002)')
-    parser.add_argument(
-        '--nproc', default=1, type=int,
-        help='Beta value for FDA (A2D2: 0.0015, Cityscapes: 0.002)')
+        help='Beta value for FDA (A2D2: 0.0015, Cityscapes: 0.0015)')
+    parser.add_argument('--nproc', default=1, type=int)
     args = parser.parse_args()
     return args
 
@@ -240,9 +280,17 @@ if __name__ == "__main__":
 
     args = parse_args()
 
+    src = args.src
     src_path = args.src_path
     trg_path = args.trg_path
     out_path = args.out_path
     beta = args.beta
     nproc = args.nproc
-    transfer_a2d2_to_cityscapes(src_path, trg_path, out_path, beta, nproc)
+
+    if src == 'a2d2':
+        transfer_a2d2_to_cityscapes(src_path, trg_path, out_path, beta, nproc)
+    elif src == 'cityscapes':
+        transfer_cityscapes_to_a2d2(src_path, trg_path, out_path, beta, nproc)
+    else:
+        raise Exception(f"Invalid source ({src})")
+
