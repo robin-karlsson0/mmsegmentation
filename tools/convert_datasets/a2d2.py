@@ -131,59 +131,59 @@ SEG_COLOR_DICT_CITYSCAPES = {
 }
 
 SEG_COLOR_DICT_DA_EXP = {
-    (255, 0, 0)    : 7,  # Car 1 --> Car
-    (200, 0, 0)    : 7,  # Car 2 --> Car
-    (150, 0, 0)    : 7,  # Car 3 --> Car
-    (128, 0, 0)    : 7,  # Car 4 --> Car
-    (182, 89, 6)   : 10, # Bicycle 1 --> Bicycle
-    (150, 50, 4)   : 10, # Bicycle 2 --> Bicycle
-    (90, 30, 1)    : 10, # Bicycle 3 --> Bicycle
-    (90, 30, 30)   : 10, # Bicycle 4 --> Bicycle
-    (204, 153, 255): 6,  # Pedestrian 1 --> Person
-    (189, 73, 155) : 6,  # Pedestrian 2 --> Person
-    (239, 89, 191) : 6,  # Pedestrian 3 --> Person
-    (255, 128, 0)  : 8,  # Truck 1 --> Utility vehicle
-    (200, 128, 0)  : 8,  # Truck 2 --> Utility vehicle
-    (150, 128, 0)  : 8,  # Truck 3 --> Utility vehicle
-    (0, 0, 100)    : 8,  # Tractor --> Utility vehicle
-    (0, 255, 0)    : 9,  # Small vehicles 1 --> Motorcycle
-    (0, 200, 0)    : 9,  # Small vehicles 2 --> Motorcycle
-    (0, 150, 0)    : 9,  # Small vehicles 3 --> Motorcycle
-    (0, 128, 255)  : 2,  # Traffic signal 1 --> Static obstacle
-    (30, 28, 158)  : 2,  # Traffic signal 2 --> Static obstacle
-    (60, 28, 100)  : 2,  # Traffic signal 3 --> Static obstacle
-    (0, 255, 255)  : 3,  # Traffic sign 1 --> Traffic sign
-    (30, 220, 220) : 3,  # Traffic sign 2 --> Traffic sign
-    (60, 157, 199) : 3,  # Traffic sign 3 --> Traffic sign
-    (255, 255, 0)  : 8,  # Utility vehicle 1 --> Utility vehicle
-    (255, 255, 200): 8,  # Utility vehicle 2 --> Utility vehicle
-    (233, 100, 0)  : 2,  # Sidebars --> Static obstacle
+    (255, 0, 0)    : 2,  # Car 1 --> Car
+    (200, 0, 0)    : 2,  # Car 2 --> Car
+    (150, 0, 0)    : 2,  # Car 3 --> Car
+    (128, 0, 0)    : 2,  # Car 4 --> Car
+    (182, 89, 6)   : 4, # Bicycle 1 --> Bicycle
+    (150, 50, 4)   : 4, # Bicycle 2 --> Bicycle
+    (90, 30, 1)    : 4, # Bicycle 3 --> Bicycle
+    (90, 30, 30)   : 4, # Bicycle 4 --> Bicycle
+    (204, 153, 255): 1,  # Pedestrian 1 --> Person
+    (189, 73, 155) : 1,  # Pedestrian 2 --> Person
+    (239, 89, 191) : 1,  # Pedestrian 3 --> Person
+    (255, 128, 0)  : 2,  # Truck 1 --> Utility vehicle
+    (200, 128, 0)  : 2,  # Truck 2 --> Utility vehicle
+    (150, 128, 0)  : 2,  # Truck 3 --> Utility vehicle
+    (0, 0, 100)    : 2,  # Tractor --> Utility vehicle
+    (0, 255, 0)    : 3,  # Small vehicles 1 --> Motorcycle
+    (0, 200, 0)    : 3,  # Small vehicles 2 --> Motorcycle
+    (0, 150, 0)    : 3,  # Small vehicles 3 --> Motorcycle
+    (0, 128, 255)  : 7,  # Traffic signal 1 --> Static obstacle
+    (30, 28, 158)  : 7,  # Traffic signal 2 --> Static obstacle
+    (60, 28, 100)  : 7,  # Traffic signal 3 --> Static obstacle
+    (0, 255, 255)  : 6,  # Traffic sign 1 --> Traffic sign
+    (30, 220, 220) : 6,  # Traffic sign 2 --> Traffic sign
+    (60, 157, 199) : 6,  # Traffic sign 3 --> Traffic sign
+    (255, 255, 0)  : 2,  # Utility vehicle 1 --> Utility vehicle
+    (255, 255, 200): 2,  # Utility vehicle 2 --> Utility vehicle
+    (233, 100, 0)  : 7,  # Sidebars --> Static obstacle
     (110, 110, 0)  : 0,  # Speed bumper --> Road
-    (128, 128, 0)  : 1,  # Curbstone --> Sidewalk
+    (128, 128, 0)  : 7,  # Curbstone --> Sidewalk
     (255, 193, 37) : 0,  # Solid line --> Road
-    (64, 0, 64)    : 2,  # Irrelevant signs --> Static obstacle
-    (185, 122, 87) : 2,  # Road blocks --> Static obstacle
-    (139, 99, 108) : 11, # Non-drivable street --> Other
+    (64, 0, 64)    : 7,  # Irrelevant signs --> Static obstacle
+    (185, 122, 87) : 7,  # Road blocks --> Static obstacle
+    (139, 99, 108) : 7, # Non-drivable street --> Other
     (210, 50, 115) : 0,  # Zebra crossing --> Road
-    (255, 0, 128)  : 11, # Obstacles / trash --> Other
-    (255, 246, 143): 2,  # Poles --> Static obstacle
+    (255, 0, 128)  : 7, # Obstacles / trash --> Other
+    (255, 246, 143): 7,  # Poles --> Static obstacle
     (150, 0, 150)  : 0,  # RD restricted area --> Road
-    (204, 255, 153): 11, # Animals --> Other
-    (238, 162, 173): 2,  # Grid structure --> Static obstacle
-    (33, 44, 177)  : 2,  # Signal corpus --> Static obstacle
+    (204, 255, 153): 7, # Animals --> Other
+    (238, 162, 173): 7,  # Grid structure --> Static obstacle
+    (33, 44, 177)  : 7,  # Signal corpus --> Static obstacle
     (180, 50, 180) : 0,  # Drivable cobblestone --> Road
-    (255, 70, 185) : 2,  # Electronic traffic --> Static obstacle
+    (255, 70, 185) : 7,  # Electronic traffic --> Static obstacle
     (238, 233, 191): 0,  # Slow drive area --> Road
-    (147, 253, 194): 4,  # Nature object --> Vegetation
+    (147, 253, 194): 7,  # Nature object --> Vegetation
     (150, 150, 200): 0,  # Parking area --> Road
-    (180, 150, 200): 1,  # Sidewalk --> Sidewalk
-    (72, 209, 204) : 11, # Ego car --> Other
+    (180, 150, 200): 7,  # Sidewalk --> Sidewalk
+    (72, 209, 204) : 255, # Ego car --> Other
     (200, 125, 210): 0,  # Painted driv. instr. --> Road
-    (159, 121, 238): 2,  # Traffic guide obj. --> Static obstacle
+    (159, 121, 238): 7,  # Traffic guide obj. --> Static obstacle
     (128, 0, 255)  : 0,  # Dashed line --> Road
     (255, 0, 255)  : 0,  # RD normal street --> Road
     (135, 206, 255): 5,  # Sky --> Sky
-    (241, 230, 255): 2,  # Buildings --> Static obstacle
+    (241, 230, 255): 7,  # Buildings --> Static obstacle
     (96, 69, 143)  : 255, # Blurred area --> Static (void)
     (53, 46, 82)   : 255, # Rain dirt --> Dynamic (void)
 }

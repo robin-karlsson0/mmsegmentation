@@ -118,44 +118,40 @@ def modify_label(label):
 
     # Road
     new_label[label == ROAD] = 0
-    # Sidewalk
-    new_label[label == GROUND] = 1
-    new_label[label == SIDEWALK] = 1
-    new_label[label == PARKING] = 1
-    # Static obstacle
-    new_label[label == STATIC] = 2
-    new_label[label == BUILDING] = 2
-    new_label[label == WALL] = 2
-    new_label[label == FENCE] = 2
-    new_label[label == GUARD_RAIL] = 2
-    new_label[label == BRIDGE] = 2
-    new_label[label == TUNNEL] = 2
-    new_label[label == POLE] = 2
-    new_label[label == POLEGROUP] = 2
-    new_label[label == TRAFFIC_LIGHT] = 2
-    # Traffic sign
-    new_label[label == TRAFFIC_SIGN] = 3
-    # Vegetation
-    new_label[label == VEGETATION] = 4
-    new_label[label == TERRAIN] = 4
+    # Pedestrians
+    new_label[label == PERSON] = 1
+    # Vehicles
+    new_label[label == CAR] = 2
+    new_label[label == TRUCK] = 2
+    new_label[label == BUS] = 2
+    new_label[label == CARAVAN] = 2
+    new_label[label == TRAIN] = 2
+    # Motorcycles
+    new_label[label == MOTORCYCLE] = 3
+    # Bicycles
+    new_label[label == BICYCLE] = 4
     # Sky
     new_label[label == SKY] = 5
-    # Person
-    new_label[label == PERSON] = 6
-    # Car
-    new_label[label == CAR] = 7
-    # Utility vehicle
-    new_label[label == TRUCK] = 8
-    new_label[label == BUS] = 8
-    new_label[label == CARAVAN] = 8
-    new_label[label == TRAIN] = 8
-    # Motorcycle
-    new_label[label == MOTORCYCLE] = 9
-    # Bicycle
-    new_label[label == BICYCLE] = 10
+    # Traffic signs
+    new_label[label == TRAFFIC_SIGN] = 6
     # Other
-    new_label[label == DYNAMIC] = 11
-    new_label[label == RAIL_TRACK] = 11
+    new_label[label == DYNAMIC] = 7
+    new_label[label == STATIC] = 7
+    new_label[label == GROUND] = 7
+    new_label[label == SIDEWALK] = 7
+    new_label[label == PARKING] = 7
+    new_label[label == RAIL_TRACK] = 7
+    new_label[label == BUILDING] = 7
+    new_label[label == WALL] = 7
+    new_label[label == FENCE] = 7
+    new_label[label == GUARD_RAIL] = 7
+    new_label[label == BRIDGE] = 7
+    new_label[label == TUNNEL] = 7
+    new_label[label == POLE] = 7
+    new_label[label == POLEGROUP] = 7
+    new_label[label == TRAFFIC_LIGHT] = 7
+    new_label[label == VEGETATION] = 7
+    new_label[label == TERRAIN] = 7
 
     return new_label
 
