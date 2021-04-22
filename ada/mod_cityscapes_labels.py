@@ -7,26 +7,42 @@ import cv2
 import copy
 
 
-# Cityscapes '
-ROAD = 0
-SIDEWALK = 1
-BUILDING = 2
-WALL = 3
-FENCE = 4
-POLE = 5
-TRAFFIC_LIGHT = 6
-TRAFFIC_SIGN = 7
-VEGETATION = 8
-TERRAIN = 9
-SKY = 10
-PERSON = 11
-RIDER = 12
-CAR = 13
-TRUCK = 14
-BUS = 15
-TRAIN = 16
-MOTORCYCLE = 17
-BICYCLE = 18
+# Cityscapes 'id' indices
+UNLABELED = 0
+EGO_VEHICLE = 1
+RECTIFICATION_BORDER = 2
+OUT_OF_ROI = 3
+STATIC = 4
+DYNAMIC = 5
+GROUND = 6  # Surface at tram stop etc.
+ROAD = 7
+SIDEWALK = 8
+PARKING = 9
+RAIL_TRACK = 10
+BUILDING = 11
+WALL = 12
+FENCE = 13
+GUARD_RAIL = 14
+BRIDGE = 15
+TUNNEL = 16
+POLE = 17
+POLEGROUP = 18
+TRAFFIC_LIGHT = 19
+TRAFFIC_SIGN = 20
+VEGETATION = 21
+TERRAIN = 22
+SKY = 23
+PERSON = 24
+RIDER = 25
+CAR = 26
+TRUCK = 27
+BUS = 28
+CARAVAN = 29
+TRAILER = 30
+TRAIN = 31
+MOTORCYCLE = 32
+BICYCLE = 33
+LICENSE_PLATE = -1
 IGNORE = 255
 
 
@@ -94,46 +110,70 @@ def modify_label(label):
     Args:
         label: np array of dim (1024, 2048) and integer values as seg classes.
     '''
-
-    # Switch 'wall' --> 'building'
-    label[label == WALL] = BUILDING
-
-    # Skip 'pole'
-    label[label == POLE] = IGNORE
-
-    # Skip 'traffic_light'
-    label[label == TRAFFIC_LIGHT] = IGNORE
-
-    # Switch 'terrain' --> 'vegetation'
-    label[label == TERRAIN] = VEGETATION
-
-    # Switch 'bus' --> 'truck'
-    label[label == BUS] = TRUCK
-
-    # Skip 'train'
-    label[label == TRAIN] = IGNORE
-
     # Switch 'rider' --> 'motorcycle' or 'bicycle' depending on context
     if np.any(label == RIDER):
         label = modify_rider_seg(label)
 
-    return label
+    new_label = 255*np.ones(label.shape, dtype=np.uint8)
+
+    # Road
+    new_label[label == ROAD] = 0
+    # Sidewalk
+    new_label[label == GROUND] = 1
+    new_label[label == SIDEWALK] = 1
+    new_label[label == PARKING] = 1
+    # Static obstacle
+    new_label[label == STATIC] = 2
+    new_label[label == BUILDING] = 2
+    new_label[label == WALL] = 2
+    new_label[label == FENCE] = 2
+    new_label[label == GUARD_RAIL] = 2
+    new_label[label == BRIDGE] = 2
+    new_label[label == TUNNEL] = 2
+    new_label[label == POLE] = 2
+    new_label[label == POLEGROUP] = 2
+    new_label[label == TRAFFIC_LIGHT] = 2
+    # Traffic sign
+    new_label[label == TRAFFIC_SIGN] = 3
+    # Vegetation
+    new_label[label == VEGETATION] = 4
+    new_label[label == TERRAIN] = 4
+    # Sky
+    new_label[label == SKY] = 5
+    # Person
+    new_label[label == PERSON] = 6
+    # Car
+    new_label[label == CAR] = 7
+    # Utility vehicle
+    new_label[label == TRUCK] = 8
+    new_label[label == BUS] = 8
+    new_label[label == CARAVAN] = 8
+    new_label[label == TRAIN] = 8
+    # Motorcycle
+    new_label[label == MOTORCYCLE] = 9
+    # Bicycle
+    new_label[label == BICYCLE] = 10
+    # Other
+    new_label[label == DYNAMIC] = 11
+    new_label[label == RAIL_TRACK] = 11
+
+    return new_label
 
 
 def modify_cityscapes_labels(dataset_path):
     '''Creates and store new labels following mutual Cityscapes-A2D2 semantics.
 
     NOTE: Remember to modify 'mmseg/datasets/cityscapes.py' to read new labels!
-        Old suffix: _gtFine_labelTrainIds
+        Old suffix: labelIds
         New suffix: _gtFine_labelTrainIds_mod
     '''
     print(f"Dataset path: {dataset_path}")
 
-    LABEL_SUFFIX = '_gtFine_labelTrainIds'
+    LABEL_SUFFIX = '_gtFine_labelIds'
     NEW_SUFFIX = '_gtFine_labelTrainIds_mod'
 
     # Read all 'labelTrainIds' files
-    label_paths = glob.glob(f'{dataset_path}/gtFine/*/*/*{LABEL_SUFFIX}.png')
+    label_paths = glob.glob(f'{dataset_path}/gtFine/*/aachen/*{LABEL_SUFFIX}.png')
 
     # Generate modified labels one-by-one, and save with new suffix
     label_iter = 1
