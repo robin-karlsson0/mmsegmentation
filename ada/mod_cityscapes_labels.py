@@ -173,7 +173,7 @@ def modify_cityscapes_labels(dataset_path):
     NEW_SUFFIX = '_gtFine_labelTrainIds_mod'
 
     # Read all 'labelTrainIds' files
-    label_paths = glob.glob(f'{dataset_path}/gtFine/*/aachen/*{LABEL_SUFFIX}.png')
+    label_paths = glob.glob(f'{dataset_path}/gtFine/*/*/*{LABEL_SUFFIX}.png')
 
     # Generate modified labels one-by-one, and save with new suffix
     label_iter = 1
