@@ -18,8 +18,8 @@ class CityscapesDataset(CustomDataset):
     fixed to '_gtFine_labelTrainIds.png' for Cityscapes dataset.
     """
 
-    CLASSES = ('road', 'persons', 'vehicles', 'motorcycles', 'bicycles', 'sky', 
-               'traffic signs', 'other')
+    CLASSES = ('road', 'person', 'vehicle', 'motorcycle', 'bicycle', 'sky', 
+               'traffic sign', 'other')
 
     PALETTE = [[128, 64, 128], [220, 20, 60], [0, 0, 142], [0, 0, 230],
                [119, 11, 32], [70, 130, 180], [220, 220, 0], [70, 70, 70]]
