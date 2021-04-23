@@ -293,7 +293,7 @@ def convert_da_trainids(label_filepath, ignore_id=255):
         mask = np.prod(mask, axis=-1)
         mask = mask.astype(np.bool)
         # Segment masked elements with 'trainIds' value
-        mod_label[mask] = SEG_COLOR_DICT_CITYSCAPES[seg_color]
+        mod_label[mask] = SEG_COLOR_DICT_DA_EXP[seg_color]
 
     # Save new 'trainids' semantic label
     label_filepath = modify_label_filename(label_filepath)
@@ -407,6 +407,8 @@ def parse_args():
         'a2d2_path',
         help='A2D2 segmentation data absolute path\
                            (NOT the symbolically linked one!)')
+    parser.add_argument(
+        'choice', help='Label conversion type choice')
     parser.add_argument('-o', '--out-dir', help='Output path')
     parser.add_argument(
         '--no-convert',
@@ -420,8 +422,6 @@ def parse_args():
         action='store_false',
         help='Skips restructuring directory structure')
     parser.set_defaults(restruct=True)
-    parser.add_argument(
-        '--choice', default='cityscapes', help='Label conversion type choice')
     parser.add_argument(
         '--val', default=0.02, type=float, help='Validation set sample ratio')
     parser.add_argument(
@@ -481,6 +481,7 @@ def main():
     if args.convert:
         seg_choice = args.choice
         if seg_choice == 'cityscapes':
+            print("Converting labels --> Cityscapes")
             if args.nproc > 1:
                 mmcv.track_parallel_progress(convert_cityscapes_trainids,
                                              label_filepaths, args.nproc)
@@ -488,12 +489,14 @@ def main():
                 mmcv.track_progress(convert_cityscapes_trainids,
                                     label_filepaths)
         elif seg_choice == 'a2d2':
+            print("Converting labels --> A2D2")
             if args.nproc > 1:
                 mmcv.track_parallel_progress(convert_a2d2_trainids,
                                              label_filepaths, args.nproc)
             else:
                 mmcv.track_progress(convert_a2d2_trainids, label_filepaths)
         elif seg_choice == 'da':
+            print("Converting labels --> DA experiment")
             if args.nproc > 1:
                 mmcv.track_parallel_progress(convert_da_trainids,
                                              label_filepaths, args.nproc)
