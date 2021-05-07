@@ -189,6 +189,15 @@ SEG_COLOR_DICT_DA_EXP = {
 }
 
 
+def get_sample_partition_index(idx, subdir_size):
+    '''Converts an index to the correct subfolder index and sample index.
+    '''
+    sampled_idx = idx % subdir_size
+    subdir_idx = int((idx - sampled_idx) / subdir_size)
+
+    return (sampled_idx, subdir_idx)
+
+
 def modify_label_filename(label_filepath):
     """Returns a mmsegmentation-combatible label filename."""
     label_filepath = label_filepath.replace('_label_', '_camera_')
@@ -305,27 +314,38 @@ def restructure_a2d2_directory(a2d2_path,
                                val_ratio,
                                test_ratio,
                                use_symlinks=True,
+                               subdir_size=1000,
                                label_suffix='_labelTrainIds.png'):
     """Creates a new directory structure and link existing files into it.
 
     Required to make the A2D2 dataset conform to the mmsegmentation frameworks
     expected dataset structure.
 
+    Samples are arranged into subdirectories to improve file system performance. 
+
     my_dataset
     └── img_dir
     │   ├── train
-    │   │   ├── xxx{img_suffix}
+    |   |   ├── 0
+    |   |   |   ├── xxx{img_suffix}
+    |   |   |   ...
     |   |   ...
     │   ├── val
-    │   │   ├── yyy{img_suffix}
+    |   |   ├── 0
+    |   |   |   ├── yyy{img_suffix}
+    |   |   |   ...
     │   │   ...
     │   ...
     └── ann_dir
         ├── train
-        │   ├── xxx{seg_map_suffix}
+        |   ├── 0
+        |   |   ├── xxx{seg_map_suffix}
+        |   |   ...
         |   ...
         ├── val
-        |   ├── yyy{seg_map_suffix}
+        |   ├── 0
+        |   |   ├── yyy{seg_map_suffix}
+        |   |   ...
         ... ...
 
     Args:
@@ -333,6 +353,7 @@ def restructure_a2d2_directory(a2d2_path,
         val_ratio: Float value representing ratio of validation samples.
         test_ratio: Float value representing ratio of test samples.
         label_suffix: Label filename ending string.
+        subdir_size: Number of files in each sample subdirectory.
         use_symlinks: Symbolically link existing files in the original A2D2
                       dataset directory. If false, files will be copied.
     """
@@ -348,14 +369,8 @@ def restructure_a2d2_directory(a2d2_path,
     mmcv.mkdir_or_exist(osp.join(a2d2_path, 'ann_dir', 'test'))
 
     # Lists containing all images and labels to symlinked
-    img_filepaths = sorted(glob.glob(osp.join(a2d2_path, '*/camera/*/*.png')))
-    ann_filepaths = sorted(
-        glob.glob(osp.join(a2d2_path, '*/label/*/*{}'.format(label_suffix))))
-
-    # Randomize order of (image, label) pairs
-    pairs = list(zip(img_filepaths, ann_filepaths))
-    random.shuffle(pairs)
-    img_filepaths, ann_filepaths = zip(*pairs)
+    img_filepaths = glob.glob(osp.join(a2d2_path, '*/camera/*/*.png'))
+    random.shuffle(img_filepaths)
 
     # Split data according to given ratios
     total_samples = len(img_filepaths)
@@ -364,11 +379,18 @@ def restructure_a2d2_directory(a2d2_path,
     train_idx_end = int(np.floor(train_ratio * (total_samples - 1)))
     val_idx_end = train_idx_end + int(np.ceil(val_ratio * total_samples))
 
+    # Keep independent indices so subdir indices start at 0
+    train_idx = 0
+    val_idx = 0
+    test_idx = 0
+
     # Create symlinks file-by-file
     for sample_idx in range(total_samples):
 
         img_filepath = img_filepaths[sample_idx]
-        ann_filepath = ann_filepaths[sample_idx]
+        ann_filepath = str(img_filepath)
+        for args in [('/camera/', '/label/'), ('.png', '_labelTrainIds.png')]:
+            ann_filepath = ann_filepath.replace(args[0], args[1])
 
         # Partions string: [generic/path/to/file] [/] [filename]
         img_filename = img_filepath.rpartition('/')[2]
@@ -376,13 +398,30 @@ def restructure_a2d2_directory(a2d2_path,
 
         if sample_idx <= train_idx_end:
             split = 'train'
+            subsample_idx = train_idx
+            train_idx += 1
         elif sample_idx <= val_idx_end:
             split = 'val'
+            subsample_idx = val_idx
+            val_idx += 1
         else:
             split = 'test'
+            subsample_idx = test_idx
+            test_idx += 1
+        
+        # Get subdirectory index for given subsample index
+        _, subdir_idx = get_sample_partition_index(
+            subsample_idx, subdir_size)
 
-        img_link_path = osp.join(a2d2_path, 'img_dir', split, img_filename)
-        ann_link_path = osp.join(a2d2_path, 'ann_dir', split, ann_filename)
+        # Subdirectory paths
+        img_subdir_path = osp.join(a2d2_path, 'img_dir', split, str(subdir_idx))
+        ann_subdir_path = osp.join(a2d2_path, 'ann_dir', split, str(subdir_idx))
+        mmcv.mkdir_or_exist(img_subdir_path)
+        mmcv.mkdir_or_exist(ann_subdir_path)
+
+        # Link paths
+        img_link_path = osp.join(img_subdir_path, img_filename)
+        ann_link_path = osp.join(ann_subdir_path, ann_filename)
 
         if use_symlinks:
             # NOTE: Can only create new symlinks if no priors ones exists
@@ -434,6 +473,12 @@ def parse_args():
         action='store_false',
         help='Use hard links instead of symbolic links')
     parser.set_defaults(symlink=True)
+    parser.add_argument(
+        '--subdir-size',
+        default=1000,
+        type=int,
+        help='Number of files in each sample subdirectory')
+    parser.add_argument('--seed', default=18, type=int, help='Random seed')
     args = parser.parse_args()
     return args
 
@@ -468,7 +513,12 @@ def main():
     Example usage:
         python tools/convert_datasets/a2d2.py path/to/camera_lidar_semantic
     """
+
     args = parse_args()
+
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    
     a2d2_path = args.a2d2_path
     out_dir = args.out_dir if args.out_dir else a2d2_path
     mmcv.mkdir_or_exist(out_dir)
@@ -507,7 +557,8 @@ def main():
 
     # Restructure directory structure into 'img_dir' and 'ann_dir'
     if args.restruct:
-        restructure_a2d2_directory(out_dir, args.val, args.test, args.symlink)
+        restructure_a2d2_directory(
+            out_dir, args.val, args.test, args.symlink, args.subdir_size)
 
 
 if __name__ == '__main__':
