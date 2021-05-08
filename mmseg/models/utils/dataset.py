@@ -232,8 +232,8 @@ class SourceDatasetA2D2(SemanticSegDataset):
            raise FileNotFoundError(f"Invalid dataset paths ({self.img_dir}, \
                                      {self.ann_dir})")
 
-        # Create list of image filenames
-        self.img_list = os.listdir(self.img_dir)
+        # Create list of image filenames (splice/subdir/files)
+        self.img_list = glob.glob(f'{self.img_dir}/*/*.png')
 
         self.samples_N = len(self.img_list)
 
@@ -447,7 +447,7 @@ class TargetDataset(SemanticSegDataset):
             dataset (str): 'a2d2' or 'cityscapes'
         '''
         if dataset == 'a2d2':
-            self.samples = glob.glob(f'{root_dir}/img_dir/train/*.png')
+            self.samples = glob.glob(f'{root_dir}/img_dir/train/*/*.png')
         elif dataset == 'cityscapes':
             self.samples = glob.glob(f'{root_dir}/leftImg8bit/train/*/*.png')
         else:
