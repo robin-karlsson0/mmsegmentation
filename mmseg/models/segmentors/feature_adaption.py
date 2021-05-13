@@ -609,7 +609,7 @@ class FeatureAdaption(EncoderDecoder):
         correct_pred = 0.5*(np.mean(source_pred) + np.mean(target_pred))
         #self.discr_acc_list.append(correct_pred * 100.)
 
-        losses_ = {'feature_adaptation.discr_acc': torch.tensor(correct_pred)}
+        losses_ = {'feature_adaptation.discr_acc': torch.tensor(correct_pred).to('cuda')}
         losses.update(losses_)
 
         #################
