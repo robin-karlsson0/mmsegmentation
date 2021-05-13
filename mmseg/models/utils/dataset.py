@@ -521,25 +521,34 @@ class FeatDiscriminator(torch.nn.Module):
 class StructDiscriminator(torch.nn.Module):
     """Discriminating contextual features using 2D convolutions.
     """
-    def __init__(self, input_dim, output_dim=1, ch=64, dropout_p=0.):
+    def __init__(self, input_dim, output_dim=1, ch=64):
         """
         """
         super().__init__()
 
         self.D = nn.Sequential(
+            # 1: 64
             nn.Conv2d(input_dim, ch, kernel_size=4, stride=2, padding=1),
-            nn.Dropout2d(p=dropout_p),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            # 2: 128
             nn.Conv2d(ch, ch*2, kernel_size=4, stride=2, padding=1),
-            nn.Dropout2d(p=dropout_p),
+            nn.BatchNorm2d(ch*2),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            # 3: 256
             nn.Conv2d(ch*2, ch*4, kernel_size=4, stride=2, padding=1),
-            nn.Dropout2d(p=dropout_p),
+            nn.BatchNorm2d(ch*4),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            # 4: 512
             nn.Conv2d(ch*4, ch*8, kernel_size=4, stride=2, padding=1),
-            nn.Dropout2d(p=dropout_p),
+            nn.BatchNorm2d(ch*8),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            # 5: 512
+            nn.Conv2d(ch*8, ch*8, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(ch*8),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            # 6: 1
             nn.Conv2d(ch*8, output_dim, kernel_size=4, stride=2, padding=1),
+            nn.Sigmoid(),
         )
 
     def forward(self, x):

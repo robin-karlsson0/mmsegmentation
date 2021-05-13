@@ -170,7 +170,7 @@ class FeatureAdaption(EncoderDecoder):
         if self.discr_type == 'feature':
             self.discr = FeatDiscriminator(input_dim=self.discr_input_dim, output_dim=2, dropout_p=self.discr_dropout_p)
         elif self.discr_type == 'struct':
-            self.discr = StructDiscriminator(input_dim=self.discr_input_dim, output_dim=1, dropout_p=self.discr_dropout_p)
+            self.discr = StructDiscriminator(input_dim=self.discr_input_dim, output_dim=1)
         else:
             raise Exception(f"Invalid discriminator type: {self.discr_type}")
 
