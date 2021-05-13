@@ -175,13 +175,10 @@ class FeatureAdaption(EncoderDecoder):
             raise Exception(f"Invalid discriminator type: {self.discr_type}")
 
         ################
-        #  OPTIMIZERS
+        #  OBJECTIVES
         ################
-        #params = [p for p in self.discr.parameters() if p.requires_grad]
-        #self.optimizer_discr = torch.optim.Adam(params, lr=self.discr_lr, weight_decay=0.0005, betas=(0.9, 0.99)) #momentum=self.sgd_momentum)
 
         self.KLDivLoss = nn.KLDivLoss(reduction='mean')
-        #self.CrossEntropyLoss = nn.CrossEntropyLoss(ignore_index=255)
         self.BCELoss = nn.BCEWithLogitsLoss()
 
         self.discr_acc_list = deque(maxlen=100)
@@ -189,13 +186,6 @@ class FeatureAdaption(EncoderDecoder):
         for _ in range(100):
             self.discr_acc_list.append(0.)
 
-        #################
-        #  LOAD MODELS
-        #################
-        if self.load_iter != None:
-            self.load_model(self.load_iter, self.load_dir, 'source')
-            self.load_model(self.load_iter, self.load_dir, 'target')
-            self.load_model(self.load_iter, self.load_dir, 'discr')
         
     ############################
     #  SOURCE MODEL FUNCTIONS
@@ -617,18 +607,19 @@ class FeatureAdaption(EncoderDecoder):
         target_pred[discr_pred[N:] <= -0.5] = 1.
         
         correct_pred = 0.5*(np.mean(source_pred) + np.mean(target_pred))
-        self.discr_acc_list.append(correct_pred * 100.)
+        #self.discr_acc_list.append(correct_pred * 100.)
 
-        #print("Acc: ", correct_pred*100., " (avg. ", np.mean(self.discr_acc_list), ")")
+        losses_ = {'feature_adaptation.discr_acc': torch.tensor(correct_pred)}
+        losses.update(losses_)
 
         #################
         #  Save models
         #################
-        if self.iter_idx % self.save_interval == 0:
-            print('Saving model')
-            self.save_model(self.iter_idx, self.save_dir, 'source')
-            self.save_model(self.iter_idx, self.save_dir, 'target')
-            self.save_model(self.iter_idx, self.save_dir, 'discr')
+        #if self.iter_idx % self.save_interval == 0:
+        #    print('Saving model')
+        #    self.save_model(self.iter_idx, self.save_dir, 'source')
+        #    self.save_model(self.iter_idx, self.save_dir, 'target')
+        #    self.save_model(self.iter_idx, self.save_dir, 'discr')
 
         # Reset iterators when cycled through
         if self.iter_idx % len(self.dataloader_target) == 0:
@@ -649,13 +640,13 @@ class FeatureAdaption(EncoderDecoder):
     def simple_test(self, img, img_meta, rescale=True):
         """Simple test with single image."""
 
-        if self.load_iter != None:
-            if self.eval_model == 'source':
-                self.load_model_(self.load_iter, self.load_dir, 'source')
-            elif self.eval_model == 'target':
-                self.load_model(self.load_iter, self.load_dir, 'target')
-            else:
-                raise Exception(f"Undefined model selected ({self.eval_model})")
+        #if self.load_iter != None:
+        #    if self.eval_model == 'source':
+        #        self.load_model(self.load_iter, self.load_dir, 'source')
+        #    elif self.eval_model == 'target':
+        #        self.load_model(self.load_iter, self.load_dir, 'target')
+        #    else:
+        #        raise Exception(f"Undefined model selected ({self.eval_model})")
 
         seg_logit = self.inference(img, img_meta, rescale, self.eval_model)
         seg_pred = seg_logit.argmax(dim=1)
@@ -668,6 +659,7 @@ class FeatureAdaption(EncoderDecoder):
         seg_pred = list(seg_pred)
         return seg_pred
     
+'''    
     def save_model(self, iter_idx, path, tag):
 
         if tag == 'source':
@@ -709,6 +701,13 @@ class FeatureAdaption(EncoderDecoder):
         #with open(file_path, 'rb') as file:
         #    model_dict = pickle.load(file)
 
+        model = torch.load('exp3_a_c/iter_80000.pth')['state_dict']
+
+        self.backbone.load_state_dict(model, strict=False)
+
+        print("Exiting")
+        exit()
+
         if tag == 'source':
             # Backbone
             file_path = os.path.join(path, f'backbone_source_{iter_idx}.pth')
@@ -737,4 +736,5 @@ class FeatureAdaption(EncoderDecoder):
             #self.discr.load_state_dict(model_dict['discr'])
         else:
             raise Exception(f"Invalid model tag ({tag})")
+'''
         
