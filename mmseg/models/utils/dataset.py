@@ -263,6 +263,15 @@ class SourceDatasetA2D2(SemanticSegDataset):
         img = mmcv.imread(os.path.join(self.img_dir, img_filename))
         ann = mmcv.imread(os.path.join(os.path.join(self.ann_dir, ann_filename)), flag='grayscale')
 
+        # Handle corrupted files read by 'imread()'
+        if img.any() or ann.any() is None:
+            idx = 0
+            img_filename = self.img_list[idx]
+            ann_filename = img_filename.replace('.png', self.label_postfix + '.png')
+
+            img = mmcv.imread(os.path.join(self.img_dir, img_filename))
+            ann = mmcv.imread(os.path.join(os.path.join(self.ann_dir, ann_filename)), flag='grayscale')
+
         # BGR --> RGB
         img = mmcv.bgr2rgb(img)
 
@@ -474,6 +483,8 @@ class TargetDataset(SemanticSegDataset):
         '''
         filepath = self.samples[idx]
         img = mmcv.imread(filepath, channel_order='bgr')
+
+        try:
 
         # Random crop
         random_ratio_1 = np.random.random()
