@@ -484,7 +484,11 @@ class TargetDataset(SemanticSegDataset):
         filepath = self.samples[idx]
         img = mmcv.imread(filepath, channel_order='bgr')
 
-        try:
+        # Handle corrupted files read by 'imread()'
+        if img is None:
+            idx = 0
+            filepath = self.samples[idx]
+            img = mmcv.imread(filepath, channel_order='bgr')
 
         # Random crop
         random_ratio_1 = np.random.random()
