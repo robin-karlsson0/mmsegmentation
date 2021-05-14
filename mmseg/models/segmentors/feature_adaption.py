@@ -540,46 +540,64 @@ class FeatureAdaption(EncoderDecoder):
             out_feat_source_t = self.extract_feat_source(img_target)
             out_logit_source = self.output_logits_source(out_feat_source_t, img_metas)
             out_prob_source = F.softmax(out_logit_source, dim=1)
-            out_problog_source = F.log_softmax(out_logit_source, dim=1)
+        #    out_problog_source = F.log_softmax(out_logit_source, dim=1)
 
         out_feat_target_t = self.extract_feat_target(img_target)
         out_logit_target = self.output_logits_target(out_feat_target_t, img_metas)
         out_prob_target = F.softmax(out_logit_target, dim=1)
-        out_problog_target = F.log_softmax(out_logit_target, dim=1)
+        #out_problog_target = F.log_softmax(out_logit_target, dim=1)
         
-        loss_cons = 0.5*(self.KLDivLoss(out_problog_source, out_prob_target)
-                + self.KLDivLoss(out_problog_target, out_prob_source))
-        loss_cons = self.lambda_consis * loss_cons
-        losses_ = {'feature_adaptation.loss_consistency': loss_cons}
-        losses.update(losses_)
+        #loss_cons = 0.5*(self.KLDivLoss(out_problog_source, out_prob_target)
+        #        + self.KLDivLoss(out_problog_target, out_prob_source))
+        #loss_cons = self.lambda_consis * loss_cons
+        #losses_ = {'feature_adaptation.loss_consistency': loss_cons}
+        #losses.update(losses_)
         
         #############################
         #  3. Adapt model features
         #############################
 
+        # TODO: Two separate discriminators (Source, Target)
+        # Deactivate discriminator learning
+        for param in self.discr.parameters():
+            param.requires_grad = False
+
         # Discriminator prediction
-        discr_pred_target = self.discr(out_logit_target)
+        discr_pred_source = self.discr(out_prob_source.detach())  # (2,1,6,14) No grad
+        discr_pred_target = self.discr(out_prob_target)  # (2,1,6,14)
+        discr_pred_cat = torch.cat((discr_pred_source, discr_pred_target))  # (4,1,6,14)
+        
+        # Domain confusion label (uniform distribution --> target distribution)
+        N, _, dim1, dim2 = discr_pred_cat.shape
+        conf_label = 0.5*torch.ones((N, 1, dim1, dim2), dtype=torch.float).to('cuda')
 
-        # Dimensions for label
-        N, _, d1, d2 = discr_pred_target.shape
-
-        # Discriminator label
-        # NOTE: Reverse labels to train model to fool discriminator
-        source_label = torch.ones((N, 1, d1, d2), dtype=torch.float).to('cuda')
-
-        loss_feat = self.BCELoss(discr_pred_target, source_label)
+        loss_feat = self.BCELoss(discr_pred_cat, conf_label)
         loss_feat = self.lambda_discr * loss_feat
         losses_ = {'feature_adaptation.loss_feat': loss_feat}
         losses.update(losses_)
 
-        ############################
+        ########################################################################
         #  4. Train discriminator
-        ############################
+        #  - Optimze to correctly predict source/target samples.
+        #  - Ensure that gradients DO NOT propagate beyond the distriminator!
+        ########################################################################
 
-        discr_pred_source = self.discr(out_logit_source.detach())  # (2,1,3,9)
-        discr_pred_target = self.discr(out_logit_target)  # (2,1,3,9)
+        # Deactivate model learning
+        #for param in self.backbone.parameters():
+        #    param.requires_grad = False
+        #for param in self.backbone_target.parameters():
+        #    param.requires_grad = False
+        #for param in self.decode_head.parameters():
+        #    param.requires_grad = False
+        #for param in self.decode_head_target.parameters():
+        #    param.requires_grad = False
+        # Activate discriminator learning
+        for param in self.discr.parameters():
+            param.requires_grad = True
 
-        discr_pred = torch.cat((discr_pred_source, discr_pred_target))  # (4,1,3,9)
+        discr_pred_source = self.discr(out_prob_source.detach())  # (2,1,6,14)
+        discr_pred_target = self.discr(out_prob_target.detach())  # (2,1,6,14)
+        discr_pred_cat = torch.cat((discr_pred_source, discr_pred_target))  # (4,1,6,14)
 
         # Dimensions for label
         N, _, d1, d2 = discr_pred_source.shape
@@ -587,9 +605,9 @@ class FeatureAdaption(EncoderDecoder):
         # Discriminator label
         source_label = torch.ones((N, 1, d1, d2), dtype=torch.float)
         target_label = torch.zeros((N, 1, d1, d2), dtype=torch.float)
-        discr_label = torch.cat((source_label, target_label)).to('cuda')  # (4,1,3,9)
+        discr_label = torch.cat((source_label, target_label)).to('cuda')  # (4,1,6,14)
 
-        loss_discr = self.BCELoss(discr_pred, discr_label)
+        loss_discr = self.BCELoss(discr_pred_cat, discr_label)
 
         losses_ = {'feature_adaptation.loss_discr': loss_discr}
         losses.update(losses_)
@@ -598,13 +616,13 @@ class FeatureAdaption(EncoderDecoder):
         #  Discriminator accuracy
         ############################
 
-        discr_pred = discr_pred.detach().cpu().numpy()
+        discr_pred = discr_pred_cat.detach().cpu().numpy()
 
         source_pred = np.zeros(discr_pred[0:N].shape)
         target_pred = np.zeros(discr_pred[N:].shape)
         # Only consider confident prediction
-        source_pred[discr_pred[0:N] > 0.5] = 1.
-        target_pred[discr_pred[N:] <= -0.5] = 1.
+        source_pred[discr_pred[0:N] > 0.75] = 1.
+        target_pred[discr_pred[N:] <= 0.25] = 1.
         
         correct_pred = 0.5*(np.mean(source_pred) + np.mean(target_pred))
         #self.discr_acc_list.append(correct_pred * 100.)

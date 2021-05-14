@@ -543,11 +543,11 @@ class StructDiscriminator(torch.nn.Module):
             nn.BatchNorm2d(ch*8),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
             # 5: 512
-            nn.Conv2d(ch*8, ch*8, kernel_size=4, stride=2, padding=1),
+            nn.Conv2d(ch*8, ch*8, kernel_size=4, stride=1, padding=1),
             nn.BatchNorm2d(ch*8),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
             # 6: 1
-            nn.Conv2d(ch*8, output_dim, kernel_size=4, stride=2, padding=1),
+            nn.Conv2d(ch*8, output_dim, kernel_size=4, stride=1, padding=1),
             nn.Sigmoid(),
         )
 
