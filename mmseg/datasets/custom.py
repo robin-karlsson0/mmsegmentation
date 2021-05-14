@@ -188,7 +188,13 @@ class CustomDataset(Dataset):
         if self.test_mode:
             return self.prepare_test_img(idx)
         else:
-            return self.prepare_train_img(idx)
+            # Attempt to handle corrupt image files
+            try:
+                return self.prepare_train_img(idx)
+            except:
+                # Return the first sample (assuming it is not corrupted)
+                print("ERROR: Excepted corrupt input sample")
+                return self.prepare_train_img(0)
 
     def prepare_train_img(self, idx):
         """Get training data and annotations after pipeline.
