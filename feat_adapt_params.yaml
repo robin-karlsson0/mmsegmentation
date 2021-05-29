@@ -1,4 +1,4 @@
-target_batch_size: 2  #4
+target_batch_size: 2  # Match 'per GPU' batchsize in MMSeg config
 discr_dropout_p: 0.
 discr_acc_threshold: -1.
 
@@ -8,11 +8,12 @@ lambda_consis: 10.
 lambda_discr: 0.001
 
 # Target dataset
+#   'cityscapes' or 'a2d2'
 target_dataset: 'cityscapes'  #'a2d2'
 # Absolute path to dataset root (untransformed)
 #   ../a2d2/camera_lidar_semantic/
 #   ../cityscapes/
-target_dataset_path: '/media/robin/Data/cityscapes/'  #'/media/robin/Data/a2d2/camera_lidar_semantic/'
+target_dataset_path: '/media/robin/Data/a2d2/camera_lidar_semantic/'
 # Crop box size matching SOURCE dataset
 #   A2D2: [480, 1208]
 #   Cityscapes: [512, 1024]
@@ -20,14 +21,14 @@ cropbox: !!python/tuple [512, 1024]
 
 train_log_file: 'train_log.txt'
 # Backbone features: 512
-# Output features: 19
-discr_input_dim: 19
+# Output features: 8
+discr_input_dim: 8
 
-save_dir: 'exp1'
-save_interval: 1000
+#save_dir: 'exp1'
+#save_interval: 1000
 
-load_dir: 'exp1'
-load_iter: #80000
+#load_dir: 'exp1'
+#load_iter: #80000
 
 eval_model: 'target'  # 'source' or 'target'
 

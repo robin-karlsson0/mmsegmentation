@@ -112,10 +112,10 @@ class FeatureAdaption(EncoderDecoder):
         self.cropbox = params['cropbox']
         self.train_log_file = params['train_log_file']
         self.discr_input_dim = params['discr_input_dim']
-        self.save_dir = params['save_dir']
-        self.save_interval = params['save_interval']
-        self.load_dir = params['load_dir']
-        self.load_iter = params['load_iter']
+        #self.save_dir = params['save_dir']
+        #self.save_interval = params['save_interval']
+        #self.load_dir = params['load_dir']
+        #self.load_iter = params['load_iter']
         self.eval_model = params['eval_model']
         self.adaption_level = params['adaption_level']
         self.discr_type = params['discriminator']
@@ -131,10 +131,10 @@ class FeatureAdaption(EncoderDecoder):
         print(f"cropbox:             {self.cropbox}")
         print(f"train_log_file:      {self.train_log_file}")
         print(f"discr_input_dim:     {self.discr_input_dim}")
-        print(f"save_dir:            {self.save_dir}")
-        print(f"save_interval:       {self.save_interval}")
-        print(f"load_dir:            {self.load_dir}")
-        print(f"load_iter:           {self.load_iter}")
+        #print(f"save_dir:            {self.save_dir}")
+        #print(f"save_interval:       {self.save_interval}")
+        #print(f"load_dir:            {self.load_dir}")
+        #print(f"load_iter:           {self.load_iter}")
         print(f"eval_model:          {self.eval_model}")
         print(f"adaption_level:      {self.adaption_level}")
         print(f"discriminator:       {self.discr_type}")
@@ -532,7 +532,8 @@ class FeatureAdaption(EncoderDecoder):
         ################################################################
         #  2. Target consistency loss
         #  Regularize target model by penalizing deviation from task.
-        #  NOTE: Source model is NOT optimized (static distribution)
+        #  NOTE: NOT applied as it does not seem to make sense when
+        #        the source model is not inteded to be adaptated...
         ################################################################
 
         # Encoder features from 'target' domain
@@ -630,15 +631,6 @@ class FeatureAdaption(EncoderDecoder):
         losses_ = {'feature_adaptation.discr_acc': torch.tensor(correct_pred).to('cuda')}
         losses.update(losses_)
 
-        #################
-        #  Save models
-        #################
-        #if self.iter_idx % self.save_interval == 0:
-        #    print('Saving model')
-        #    self.save_model(self.iter_idx, self.save_dir, 'source')
-        #    self.save_model(self.iter_idx, self.save_dir, 'target')
-        #    self.save_model(self.iter_idx, self.save_dir, 'discr')
-
         # Reset iterators when cycled through
         if self.iter_idx % len(self.dataloader_target) == 0:
             self.dataloader_target_iter = enumerate(self.dataloader_target)
@@ -658,14 +650,6 @@ class FeatureAdaption(EncoderDecoder):
     def simple_test(self, img, img_meta, rescale=True):
         """Simple test with single image."""
 
-        #if self.load_iter != None:
-        #    if self.eval_model == 'source':
-        #        self.load_model(self.load_iter, self.load_dir, 'source')
-        #    elif self.eval_model == 'target':
-        #        self.load_model(self.load_iter, self.load_dir, 'target')
-        #    else:
-        #        raise Exception(f"Undefined model selected ({self.eval_model})")
-
         seg_logit = self.inference(img, img_meta, rescale, self.eval_model)
         seg_pred = seg_logit.argmax(dim=1)
         if torch.onnx.is_in_onnx_export():
@@ -676,83 +660,3 @@ class FeatureAdaption(EncoderDecoder):
         # unravel batch dim
         seg_pred = list(seg_pred)
         return seg_pred
-    
-'''    
-    def save_model(self, iter_idx, path, tag):
-
-        if tag == 'source':
-            # Backbone
-            file_path = os.path.join(path, f'backbone_source_{iter_idx}.pth') 
-            torch.save(self.backbone.state_dict(), file_path)
-            # Decode head
-            file_path = os.path.join(path, f'decode_head_source_{iter_idx}.pth')
-            torch.save(self.decode_head.state_dict(), file_path)
-            #model_dict = {
-            #    'backbone_source': self.backbone.state_dict(),
-            #    'decode_head_source': self.decode_head.state_dict()
-            #}
-        elif tag == 'target':
-            # Backbone
-            file_path = os.path.join(path, f'backbone_target_{iter_idx}.pth') 
-            torch.save(self.backbone_target.state_dict(), file_path)
-            # Decode head
-            file_path = os.path.join(path, f'decode_head_target_{iter_idx}.pth')
-            torch.save(self.decode_head_target.state_dict(), file_path)
-            #model_dict = {
-            #    'backbone_target': self.backbone_target.state_dict(),
-            #    'decode_head_target': self.decode_head_target.state_dict()
-            #}
-        elif tag == 'discr':
-            file_path = os.path.join(path, f'discr_{iter_idx}.pth')
-            torch.save(self.discr.state_dict(), file_path)
-            #model_dict = {'discr': self.discr.state_dict()}
-        else:
-            raise Exception(f"Invalid model tag ({tag})")
-
-        #file_path = os.path.join(path, f'feat_adapt_iter_{tag}_{iter_idx}.pkl')
-        #with open(file_path, 'wb') as file:
-        #    pickle.dump(model_dict, file, protocol=pickle.HIGHEST_PROTOCOL)
-
-    def load_model(self, iter_idx, path, tag):
-
-        #file_path = os.path.join(path, f'feat_adapt_iter_{tag}_{iter_idx}.pkl')
-        #with open(file_path, 'rb') as file:
-        #    model_dict = pickle.load(file)
-
-        model = torch.load('exp3_a_c/iter_80000.pth')['state_dict']
-
-        self.backbone.load_state_dict(model, strict=False)
-
-        print("Exiting")
-        exit()
-
-        if tag == 'source':
-            # Backbone
-            file_path = os.path.join(path, f'backbone_source_{iter_idx}.pth')
-            state_dict = torch.load(file_path)
-            self.backbone.load_state_dict(state_dict)
-            # Decode head
-            file_path = os.path.join(path, f'decode_head_source_{iter_idx}.pth')
-            state_dict = torch.load(file_path)
-            self.decode_head.load_state_dict(state_dict)
-            #self.backbone.load_state_dict(model_dict['backbone_source'])
-            #self.decode_head.load_state_dict(model_dict['decode_head_source'])
-        elif tag == 'target':
-            file_path = os.path.join(path, f'backbone_target_{iter_idx}.pth')
-            state_dict = torch.load(file_path)
-            self.backbone_target.load_state_dict(state_dict)
-            # Decode head
-            file_path = os.path.join(path, f'decode_head_target_{iter_idx}.pth')
-            state_dict = torch.load(file_path)
-            self.decode_head_target.load_state_dict(state_dict)
-            #self.backbone_target.load_state_dict(model_dict['backbone_target'])
-            #self.decode_head_target.load_state_dict(model_dict['decode_head_target'])
-        elif tag =='discr':
-            file_path = os.path.join(path, f'discr_{iter_idx}.pth')
-            state_dict = torch.load(file_path)
-            self.discr.load_state_dict(state_dict)
-            #self.discr.load_state_dict(model_dict['discr'])
-        else:
-            raise Exception(f"Invalid model tag ({tag})")
-'''
-        
