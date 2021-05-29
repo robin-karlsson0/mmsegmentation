@@ -5,15 +5,15 @@ discr_acc_threshold: -1.
 # Loss scaling values
 lambda_seg: 1.
 lambda_consis: 10.
-lambda_discr: 0.001
+lambda_discr: 0.1
 
 # Target dataset
 #   'cityscapes' or 'a2d2'
-target_dataset: 'cityscapes'  #'a2d2'
+target_dataset: 'a2d2'  #'a2d2'
 # Absolute path to dataset root (untransformed)
 #   ../a2d2/camera_lidar_semantic/
 #   ../cityscapes/
-target_dataset_path: '/media/robin/Data/a2d2/camera_lidar_semantic/'
+target_dataset_path: '/media/robin/6E0806C1080687F3/a2d2_mini/camera_lidar_semantic'
 # Crop box size matching SOURCE dataset
 #   A2D2: [480, 1208]
 #   Cityscapes: [512, 1024]
@@ -23,12 +23,6 @@ train_log_file: 'train_log.txt'
 # Backbone features: 512
 # Output features: 8
 discr_input_dim: 8
-
-#save_dir: 'exp1'
-#save_interval: 1000
-
-#load_dir: 'exp1'
-#load_iter: #80000
 
 eval_model: 'target'  # 'source' or 'target'
 
@@ -41,5 +35,4 @@ adaption_level: 'output'
 discriminator: 'struct'
 
 # Miscellaneous parameters
-print_interval: 1
 num_workers: 1

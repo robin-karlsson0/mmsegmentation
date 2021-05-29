@@ -112,10 +112,6 @@ class FeatureAdaption(EncoderDecoder):
         self.cropbox = params['cropbox']
         self.train_log_file = params['train_log_file']
         self.discr_input_dim = params['discr_input_dim']
-        #self.save_dir = params['save_dir']
-        #self.save_interval = params['save_interval']
-        #self.load_dir = params['load_dir']
-        #self.load_iter = params['load_iter']
         self.eval_model = params['eval_model']
         self.adaption_level = params['adaption_level']
         self.discr_type = params['discriminator']
@@ -131,10 +127,6 @@ class FeatureAdaption(EncoderDecoder):
         print(f"cropbox:             {self.cropbox}")
         print(f"train_log_file:      {self.train_log_file}")
         print(f"discr_input_dim:     {self.discr_input_dim}")
-        #print(f"save_dir:            {self.save_dir}")
-        #print(f"save_interval:       {self.save_interval}")
-        #print(f"load_dir:            {self.load_dir}")
-        #print(f"load_iter:           {self.load_iter}")
         print(f"eval_model:          {self.eval_model}")
         print(f"adaption_level:      {self.adaption_level}")
         print(f"discriminator:       {self.discr_type}")
