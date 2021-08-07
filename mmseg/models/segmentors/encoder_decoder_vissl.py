@@ -89,12 +89,7 @@ class EncoderDecoderVISSL(BaseSegmentor):
 
     def extract_feat(self, img):
         """Extract features from images."""
-
-        # VISSL model inference
-        with torch.no_grad():
-            z = self.vissl_module.forward(img)
-
-        x = self.backbone(z)
+        x = self.backbone(img)
         if self.with_neck:
             x = self.neck(x)
         return x
@@ -102,7 +97,12 @@ class EncoderDecoderVISSL(BaseSegmentor):
     def encode_decode(self, img, img_metas):
         """Encode images with backbone and decode into a semantic segmentation
         map of the same size as input."""
-        x = self.extract_feat(img)
+
+        # VISSL model inference
+        with torch.no_grad():
+            z = self.vissl_module.forward(img)
+
+        x = self.extract_feat(z)
         out = self._decode_head_forward_test(x, img_metas)
         out = resize(
             input=out,
