@@ -3,6 +3,7 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import yaml
 from inference_module import DenseSwAVModule, InferenceInterface
 
 from mmseg.core import add_prefix
@@ -49,15 +50,17 @@ class EncoderDecoderVISSL(BaseSegmentor):
         ############################
         #  Initialize VISSL model
         ############################
-        vissl_dir = '/home/r_karlsson/workspace5/vissl'
-        config_path = os.path.join(
-            vissl_dir, 'configs/config/pretrain/swav/'
-            'dense_swav_8node_resnet_test.yaml')
+        # Read VISSL configuration parameters from file
+        with open('./vissl_params.yaml') as file:
+            vissl_params = yaml.load(file, Loader=yaml.FullLoader)
+
+        vissl_dir = vissl_params['vissl_dir']
+        config_path = os.path.join(vissl_dir, vissl_params['config_path'])
         checkpoint_path = os.path.join(vissl_dir,
-                                       'exp06/model_iteration470000.torch')
-        output_type = 'head'
+                                       vissl_params['checkpoint_path'])
+        output_type = vissl_params['output_type']
         default_config_path = os.path.join(vissl_dir,
-                                           'vissl/config/defaults.yaml')
+                                           vissl_params['default_config_path'])
 
         self.vissl_module = InferenceInterface(
             DenseSwAVModule(
