@@ -1,3 +1,4 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import warnings
 from copy import deepcopy
 
@@ -16,7 +17,7 @@ from torch.nn.modules.utils import _pair as to_2tuple
 from mmseg.ops import resize
 from ...utils import get_root_logger
 from ..builder import ATTENTION, BACKBONES
-from ..utils import PatchEmbed, swin_convert
+from ..utils import PatchEmbed
 
 
 class PatchMerging(BaseModule):
@@ -521,13 +522,12 @@ class SwinBlockSequence(BaseModule):
 
 @BACKBONES.register_module()
 class SwinTransformer(BaseModule):
-    """ Swin Transformer
-    A PyTorch implement of : `Swin Transformer:
-    Hierarchical Vision Transformer using Shifted Windows`  -
-        https://arxiv.org/abs/2103.14030
+    """Swin Transformer backbone.
 
-    Inspiration from
-    https://github.com/microsoft/Swin-Transformer
+    This backbone is the implementation of `Swin Transformer:
+    Hierarchical Vision Transformer using Shifted
+    Windows <https://arxiv.org/abs/2103.14030>`_.
+    Inspiration from https://github.com/microsoft/Swin-Transformer.
 
     Args:
         pretrain_img_size (int | tuple[int]): The size of input image when
@@ -563,8 +563,6 @@ class SwinTransformer(BaseModule):
             Default: dict(type='LN').
         norm_cfg (dict): Config dict for normalization layer at
             output of backone. Defaults: dict(type='LN').
-        pretrain_style (str): Choose to use official or mmcls pretrain weights.
-            Default: official.
         pretrained (str, optional): model pretrained path. Default: None.
         init_cfg (dict, optional): The Config for initialization.
             Defaults to None.
@@ -590,7 +588,6 @@ class SwinTransformer(BaseModule):
                  use_abs_pos_embed=False,
                  act_cfg=dict(type='GELU'),
                  norm_cfg=dict(type='LN'),
-                 pretrain_style='official',
                  pretrained=None,
                  init_cfg=None):
         super(SwinTransformer, self).__init__()
@@ -604,9 +601,6 @@ class SwinTransformer(BaseModule):
                 f'The size of image should have length 1 or 2, ' \
                 f'but got {len(pretrain_img_size)}'
 
-        assert pretrain_style in ['official', 'mmcls'], 'We only support load '
-        'official ckpt and mmcls ckpt.'
-
         if isinstance(pretrained, str) or pretrained is None:
             warnings.warn('DeprecationWarning: pretrained is a deprecated, '
                           'please use "init_cfg" instead')
@@ -616,7 +610,6 @@ class SwinTransformer(BaseModule):
         num_layers = len(depths)
         self.out_indices = out_indices
         self.use_abs_pos_embed = use_abs_pos_embed
-        self.pretrain_style = pretrain_style
         self.pretrained = pretrained
         self.init_cfg = init_cfg
 
@@ -711,9 +704,6 @@ class SwinTransformer(BaseModule):
                 state_dict = ckpt['model']
             else:
                 state_dict = ckpt
-
-            if self.pretrain_style == 'official':
-                state_dict = swin_convert(state_dict)
 
             # strip prefix of state_dict
             if list(state_dict.keys())[0].startswith('module.'):
