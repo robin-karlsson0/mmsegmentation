@@ -7,6 +7,7 @@ from .cityscapes import CityscapesDataset
 from .custom import CustomDataset
 from .dataset_wrappers import ConcatDataset, RepeatDataset
 from .drive import DRIVEDataset
+from .gta5 import GTA5Dataset
 from .hrf import HRFDataset
 from .pascal_context import PascalContextDataset, PascalContextDataset59
 from .stare import STAREDataset
@@ -17,5 +18,6 @@ __all__ = [
     'DATASETS', 'build_dataset', 'PIPELINES', 'CityscapesDataset',
     'PascalVOCDataset', 'ADE20KDataset', 'PascalContextDataset',
     'PascalContextDataset59', 'ChaseDB1Dataset', 'DRIVEDataset', 'HRFDataset',
-    'STAREDataset', 'A2D2Dataset18Classes', 'A2D2Dataset35Classes'
+    'STAREDataset', 'A2D2Dataset18Classes', 'A2D2Dataset35Classes',
+    'GTA5Dataset'
 ]
