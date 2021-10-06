@@ -1,0 +1,5 @@
+vissl_dir: 'path/to/vissl'
+config_path: 'configs/config/pretrain/swav/dense_swav_8node_resnet_test.yaml'
+checkpoint_path: 'path/to/model_iteration20000.torch'
+output_type: 'head'
+default_config_path: 'vissl/config/defaults.yaml'
