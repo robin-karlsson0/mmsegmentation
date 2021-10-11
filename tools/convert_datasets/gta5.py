@@ -188,6 +188,16 @@ def restructure_gta5_directory(gta5_path,
                 copyfile(ann_file_path, ann_link_path)
 
 
+def check_image(img_path):
+    img = mmcv.imread(img_path)
+    H, W, _ = img.shape
+
+    if H != DEF_HEIGHT or W != DEF_WIDTH:
+        img = mmcv.imresize(
+            img, (DEF_WIDTH, DEF_HEIGHT), interpolation='bicubic')
+        mmcv.imwrite(img, img_path)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description='Convert GTA 5 annotations to trainIds')
@@ -196,6 +206,12 @@ def parse_args():
         help='GTA 5 segmentation data absolute path\
                            (NOT the symbolically linked one!)')
     parser.add_argument('-o', '--out-dir', help='Output path')
+    parser.add_argument(
+        '--no-resize',
+        dest='resize',
+        action='store_false',
+        help='Skips resizing images')
+    parser.set_defaults(resize=True)
     parser.add_argument(
         '--no-convert',
         dest='convert',
@@ -267,6 +283,16 @@ def main():
     gta5_path = args.gta5_path
     out_dir = args.out_dir if args.out_dir else gta5_path
     mmcv.mkdir_or_exist(out_dir)
+
+    # Resize erronous images
+    if args.resize:
+        img_paths = glob.glob(osp.join(gta5_path, 'images', '*.png'))
+        if args.nproc > 1:
+            mmcv.track_parallel_progress(check_image,
+                                            img_paths, args.nproc)
+        else:
+            mmcv.track_progress(check_image,
+                                img_paths)
 
     # Create a list of filepaths to all original labels
     # NOTE: Original label files have a number before '.png'
