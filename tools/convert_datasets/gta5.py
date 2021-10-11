@@ -3,12 +3,17 @@ import glob
 import os.path as osp
 import random
 from os import symlink
+import scipy.io
 from shutil import copyfile
 
 import mmcv
 import numpy as np
 
 random.seed(14)
+
+# Global variables for specifying default label dimensions
+DEF_WIDTH = 1914
+DEF_HEIGHT = 1052
 
 # Global variables for specifying label suffix according to class count
 LABEL_SUFFIX = '_trainIds.png'
@@ -20,7 +25,7 @@ SEG_COLOR_DICT_CITYSCAPES = {
     (111, 74, 0): 255,  # Dynamic --> Ignore
     (81, 0, 81): 255,  # Ground --> Ignore
     (128, 64, 128): 0,  # Road
-    (244, 35, 232): 1,  # Sidewalk
+    (244, 35, 232): 1,  # Sidewzalk
     (250, 170, 160): 255,  # Parking --> Ignore
     (230, 150, 140): 255,  # Rail track --> Ignore
     (70, 70, 70): 2,  # Building
@@ -73,8 +78,13 @@ def convert_cityscapes_trainids(label_filepath, ignore_id=255):
     # Read label file as Numpy array (H, W, 3)
     orig_label = mmcv.imread(label_filepath, channel_order='rgb')
 
-    # Empty array with all elements set as 'ignore id' label
+    # Resize erronous labels to correct dimension
     H, W, _ = orig_label.shape
+    if H != DEF_HEIGHT or W != DEF_WIDTH:
+        orig_label = mmcv.imresize(orig_label, (DEF_WIDTH, DEF_HEIGHT), interpolation='nearest')
+        H, W, _ = orig_label.shape
+
+    # Empty array with all elements set as 'ignore id' label
     mod_label = ignore_id * np.ones((H, W), dtype=int)
 
     seg_colors = list(SEG_COLOR_DICT_CITYSCAPES.keys())
@@ -95,62 +105,14 @@ def convert_cityscapes_trainids(label_filepath, ignore_id=255):
     mmcv.imwrite(label_img, label_filepath)
 
 
-def create_split_dir(img_filepaths,
-                     ann_filepaths,
-                     split,
-                     root_path,
-                     use_symlinks=True):
-    """Creates dataset split directory from given file lists using symbolic
-    links or copying files.
-
-    Args:
-        img_filepaths: List of filepaths as strings.
-        ann_filepaths:
-        split: String denoting split (i.e. 'train', 'val', or 'test'),
-        root_path: GTA 5 dataset root directory (.../gta5/)
-        use_symlinks: Symbolically link existing files in the original GTA 5
-                      dataset directory. If false, files will be copied.
-    Raises:
-        FileExistError: In case of pre-existing files when trying to create new
-                        symbolic links.
-    """
-    assert split in ['train', 'val', 'test']
-
-    for img_filepath, ann_filepath in zip(img_filepaths, ann_filepaths):
-        # Partions string: [generic/path/to/file] [/] [filename]
-        img_filename = img_filepath.rpartition('/')[2]
-        ann_filename = ann_filepath.rpartition('/')[2]
-
-        img_link_path = osp.join(root_path, 'images', split, img_filename)
-        ann_link_path = osp.join(root_path, 'annotations', split, ann_filename)
-
-        if use_symlinks:
-            # NOTE: Can only create new symlinks if no priors ones exists
-            try:
-                symlink(img_filepath, img_link_path)
-            except FileExistsError:
-                pass
-            try:
-                symlink(ann_filepath, ann_link_path)
-            except FileExistsError:
-                pass
-
-        else:
-            copyfile(img_filepath, img_link_path)
-            copyfile(ann_filepath, ann_link_path)
-
-
 def restructure_gta5_directory(gta5_path,
-                               val_ratio,
-                               test_ratio,
-                               label_choice,
                                train_on_val_and_test=False,
                                use_symlinks=True):
     """Creates a new directory structure and link existing files into it.
     Required to make the GTA 5 dataset conform to the mmsegmentation frameworks
     expected dataset structure. my_dataset.
 
-    └── images
+    └── img_dir
     │   ├── train
     │   │   ├── xxx{img_suffix}
     |   |   ...
@@ -158,7 +120,7 @@ def restructure_gta5_directory(gta5_path,
     │   │   ├── yyy{img_suffix}
     │   │   ...
     │   ...
-    └── annotations
+    └── ann_dir
         ├── train
         │   ├── xxx{seg_map_suffix}
         |   ...
@@ -178,75 +140,52 @@ def restructure_gta5_directory(gta5_path,
         use_symlinks: Symbolically link existing files in the original GTA 5
                       dataset directory. If false, files will be copied.
     """
-    for r in [val_ratio, test_ratio]:
-        assert r >= 0. and r < 1., 'Invalid ratio {}'.format(r)
-
     # Create new directory structure (if not already exist)
-    mmcv.mkdir_or_exist(osp.join(gta5_path, 'images'))
-    mmcv.mkdir_or_exist(osp.join(gta5_path, 'annotations'))
-    mmcv.mkdir_or_exist(osp.join(gta5_path, 'images', 'train'))
-    mmcv.mkdir_or_exist(osp.join(gta5_path, 'images', 'val'))
-    mmcv.mkdir_or_exist(osp.join(gta5_path, 'images', 'test'))
-    mmcv.mkdir_or_exist(osp.join(gta5_path, 'annotations', 'train'))
-    mmcv.mkdir_or_exist(osp.join(gta5_path, 'annotations', 'val'))
-    mmcv.mkdir_or_exist(osp.join(gta5_path, 'annotations', 'test'))
+    mmcv.mkdir_or_exist(osp.join(gta5_path, 'img_dir'))
+    mmcv.mkdir_or_exist(osp.join(gta5_path, 'img_dir', 'train'))
+    mmcv.mkdir_or_exist(osp.join(gta5_path, 'img_dir', 'val'))
+    mmcv.mkdir_or_exist(osp.join(gta5_path, 'img_dir', 'test'))
+    mmcv.mkdir_or_exist(osp.join(gta5_path, 'ann_dir'))
+    mmcv.mkdir_or_exist(osp.join(gta5_path, 'ann_dir', 'train'))
+    mmcv.mkdir_or_exist(osp.join(gta5_path, 'ann_dir', 'val'))
+    mmcv.mkdir_or_exist(osp.join(gta5_path, 'ann_dir', 'test'))
 
-    # Lists containing all images and labels to symlinked
-    img_filepaths = sorted(glob.glob(osp.join(gta5_path, 'images/*.png')))
+    # Read split sample index file as lists of idxs
+    if osp.isfile(osp.join(gta5_path, "split.mat")) is False:
+        raise Exception("Download split.mat from webpage to dataset root.")
+    
+    split = scipy.io.loadmat('split.mat')
+    train_idxs = split['trainIds'][:,0].tolist()
+    val_idxs = split['valIds'][:,0].tolist()
+    test_idxs = split['testIds'][:,0].tolist()
 
-    if label_choice == 'cityscapes':
-        label_suffix = LABEL_SUFFIX
-    else:
-        raise ValueError
-    ann_filepaths = sorted(
-        glob.glob(osp.join(gta5_path, 'labels/*{}'.format(label_suffix))))
+    for idxs, split in [(train_idxs, 'train'),
+                        (val_idxs, 'val'),
+                        (test_idxs, 'test')]:
+        for idx in idxs:
+            img_filename = str(idx).zfill(5) + '.png'
+            ann_filename = str(idx).zfill(5) + LABEL_SUFFIX + '.png'
 
-    # Randomize order of (image, label) pairs
-    pairs = list(zip(img_filepaths, ann_filepaths))
-    random.shuffle(pairs)
-    img_filepaths, ann_filepaths = zip(*pairs)
+            img_file_path = osp.join(gta5_path, 'images', img_filename)
+            ann_file_path = osp.join(gta5_path, 'annotations', ann_filename)
 
-    # Split data according to given ratios
-    total_samples = len(img_filepaths)
-    train_ratio = 1.0 - val_ratio - test_ratio
+            img_link_path = osp.join(gta5_path, 'img_dir', split, img_filename)
+            ann_link_path = osp.join(gta5_path, 'ann_dir', split, ann_filename)
 
-    train_idx_end = int(np.ceil(train_ratio * (total_samples - 1)))
-    val_idx_end = train_idx_end + int(np.ceil(val_ratio * total_samples))
+            if use_symlinks:
+                # NOTE: Can only create new symlinks if no priors ones exists
+                try:
+                    symlink(img_file_path, img_link_path)
+                except FileExistsError:
+                    pass
+                try:
+                    symlink(ann_file_path, ann_link_path)
+                except FileExistsError:
+                    pass
 
-    # Train split
-    if train_on_val_and_test:
-        train_img_paths = img_filepaths
-        train_ann_paths = ann_filepaths
-    else:
-        train_img_paths = img_filepaths[:train_idx_end]
-        train_ann_paths = ann_filepaths[:train_idx_end]
-    # Val split
-    val_img_paths = img_filepaths[train_idx_end:val_idx_end]
-    val_ann_paths = ann_filepaths[train_idx_end:val_idx_end]
-    # Test split
-    test_img_paths = img_filepaths[val_idx_end:]
-    test_ann_paths = ann_filepaths[val_idx_end:]
-
-    create_split_dir(
-        train_img_paths,
-        train_ann_paths,
-        'train',
-        gta5_path,
-        use_symlinks=use_symlinks)
-
-    create_split_dir(
-        val_img_paths,
-        val_ann_paths,
-        'val',
-        gta5_path,
-        use_symlinks=use_symlinks)
-
-    create_split_dir(
-        test_img_paths,
-        test_ann_paths,
-        'test',
-        gta5_path,
-        use_symlinks=use_symlinks)
+            else:
+                copyfile(img_file_path, img_link_path)
+                copyfile(ann_file_path, ann_link_path)
 
 
 def parse_args():
@@ -273,10 +212,6 @@ def parse_args():
         '--choice',
         default='cityscapes',
         help='Label conversion type choice: \'cityscapes\' (18 classes)')
-    parser.add_argument(
-        '--val', default=0.103, type=float, help='Validation set sample ratio')
-    parser.add_argument(
-        '--test', default=0.197, type=float, help='Test set sample ratio')
     parser.add_argument(
         '--train-on-val-and-test',
         dest='train_on_val_and_test',
@@ -310,23 +245,23 @@ def main():
         Label choice 'cityscapes' (default) results in labels with 18 classes
         with the filename suffix '_trainIds.png'.
 
+        NOTE: Automatically resizes label images with erronous dimension.
+    
+    Dataset split:
+
+        Arranges samples into 'train', 'val', and 'test' splits according to
+        predetermined order specified in 'split.mat'.
+        NOTE: Need to download the "sample code package" from the official 
+        project webpage and extract 'split.mat' to the dataset root directory.
+
     NOTE: Add the optional argument `--train-on-val-and-test` to train on the
     entire dataset, as is usefull in the synthetic-to-real domain adaptation
     experiment setting.
 
     Add `--nproc N` for multiprocessing using N threads.
 
-    Directory restructuring:
-        GTA 5 files are not arranged in the required 'train/val/test' directory
-        structure.
-
-        The function 'restructure_gta5_directory' creates a new compatible
-        directory structure in the root directory, The optional argument
-        `--no-symlink` creates copies of the label images instead of symbolic
-        links.
-
     Example usage:
-        python tools/convert_datasets/gta.py path/to/gta5
+        python tools/convert_datasets/gta.py abs_path/to/gta5
     """
     args = parse_args()
     gta5_path = args.gta5_path
