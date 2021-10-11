@@ -154,7 +154,7 @@ def restructure_gta5_directory(gta5_path,
     if osp.isfile(osp.join(gta5_path, "split.mat")) is False:
         raise Exception("Download split.mat from webpage to dataset root.")
     
-    split = scipy.io.loadmat('split.mat')
+    split = scipy.io.loadmat(osp.join(gta5_path, 'split.mat'))
     train_idxs = split['trainIds'][:,0].tolist()
     val_idxs = split['valIds'][:,0].tolist()
     test_idxs = split['testIds'][:,0].tolist()
@@ -164,10 +164,10 @@ def restructure_gta5_directory(gta5_path,
                         (test_idxs, 'test')]:
         for idx in idxs:
             img_filename = str(idx).zfill(5) + '.png'
-            ann_filename = str(idx).zfill(5) + LABEL_SUFFIX + '.png'
+            ann_filename = str(idx).zfill(5) + LABEL_SUFFIX
 
             img_file_path = osp.join(gta5_path, 'images', img_filename)
-            ann_file_path = osp.join(gta5_path, 'annotations', ann_filename)
+            ann_file_path = osp.join(gta5_path, 'labels', ann_filename)
 
             img_link_path = osp.join(gta5_path, 'img_dir', split, img_filename)
             ann_link_path = osp.join(gta5_path, 'ann_dir', split, ann_filename)
@@ -287,8 +287,8 @@ def main():
 
     # Restructure directory structure into 'img_dir' and 'ann_dir'
     if args.restruct:
-        restructure_gta5_directory(out_dir, args.val, args.test, args.choice,
-                                   args.train_on_val_and_test, args.symlink)
+        restructure_gta5_directory(
+            out_dir, args.train_on_val_and_test, args.symlink)
 
 
 if __name__ == '__main__':
