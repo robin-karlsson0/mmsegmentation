@@ -5,6 +5,7 @@ import random
 from os import symlink
 
 import mmcv
+from PIL import Image
 
 random.seed(14)
 
@@ -94,24 +95,37 @@ def main():
     mmcv.mkdir_or_exist(osp.join(out_dir, 'ann_dir', 'val'))
     mmcv.mkdir_or_exist(osp.join(out_dir, 'ann_dir', 'test'))
 
+    # Create .png copies of .jpg images
+    jpg_imgs = glob.glob(f'{nthu_path}/*/Images/Test/*.jpg')
+    for jpg_img_path in jpg_imgs:
+        img = Image.open(jpg_img_path)
+        png_img_path = jpg_img_path[:-3] + 'png'
+        img.save(png_img_path)
+
     # Symbolically link images to new directory structure
     cities = ['Rio', 'Rome', 'Taipei', 'Tokyo']
     for city in cities:
         imgs = glob.glob(f'{nthu_path}/{city}/Images/Test/*.png')
         anns = glob.glob(f'{nthu_path}/{city}/Labels/Test/*_city.png')
 
+        city_str = city.lower()
+
+        print(f'{city_str} | #img {len(imgs)} | #ann {len(anns)}')
+        assert (len(imgs) == len(anns))
+
         for idx in range(len(imgs)):
             # Image
             old_img_path = imgs[idx]
             img_filename = old_img_path.split('/')[-1]
-            new_img_path = f'{out_dir}/img_dir/test/{city}_{img_filename}'
+            img_filename = city_str + '_' + img_filename
+            new_img_path = f'{out_dir}/img_dir/test/{img_filename}'
             symlink(old_img_path, new_img_path)
             # Annotation w. new suffix
             old_ann_path = anns[idx]
             ann_filename = old_ann_path.split('/')[-1]
-            ann_filename = ann_filename.replace('_city.png',
-                                                '_labelTrainIds.png')
-            new_ann_path = f'{out_dir}/ann_dir/test/{city}_{ann_filename}'
+            ann_filename = ann_filename.replace('_city.png', '_trainIds.png')
+            ann_filename = city_str + '_' + ann_filename
+            new_ann_path = f'{out_dir}/ann_dir/test/{ann_filename}'
             symlink(old_ann_path, new_ann_path)
 
 
