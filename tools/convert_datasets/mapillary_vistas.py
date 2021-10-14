@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
 import argparse
 import glob
 import os.path as osp
@@ -137,8 +139,7 @@ def restructure_vistas_directory(vistas_path,
     mmcv.mkdir_or_exist(osp.join(vistas_path, 'ann_dir', 'testing'))
 
     for split in ['training', 'validation', 'testing']:
-        img_filepaths = glob.glob(
-            osp.join(vistas_path, f'{split}/images/*.jpg'))
+        img_filepaths = glob.glob(f'{vistas_path}/{split}/images/*.jpg')
 
         assert len(img_filepaths) > 0
 
@@ -147,16 +148,13 @@ def restructure_vistas_directory(vistas_path,
             img_filename = img_filepath.split('/')[-1]
 
             ann_filename = img_filename[:-4] + LABEL_SUFFIX
-            ann_filepath = osp.join(vistas_path,
-                                    f'{split}/v2.0/labels/{ann_filename}')
+            ann_filepath = f'{vistas_path}/{split}/v2.0/labels/{ann_filename}'
 
-            img_linkpath = osp.join(vistas_path,
-                                    f'img_dir/{split}/{img_filename}')
+            img_linkpath = f'{vistas_path}/img_dir/{split}/{img_filename}'
             if split == 'testing':
                 ann_linkpath = None
             else:
-                ann_linkpath = osp.join(vistas_path,
-                                        f'ann_dir/{split}/{ann_filename}')
+                ann_linkpath = f'{vistas_path}/ann_dir/{split}/{ann_filename}'
 
             if use_symlinks:
                 # NOTE: Can only create new symlinks if no priors ones exists
@@ -254,13 +252,14 @@ def main():
     out_dir = args.out_dir if args.out_dir else vistas_path
     mmcv.mkdir_or_exist(out_dir)
 
-    # Create a list of filepaths to all original labels
-    suffix_wo_png = LABEL_SUFFIX[:-4]
-    label_filepaths = glob.glob(
-        osp.join(vistas_path, f'*/v2.0/labels/*[!{suffix_wo_png}].png'))
-
     # Convert segmentation images to the Cityscapes 'TrainIds' values
     if args.convert:
+
+        # Create a list of filepaths to all original labels
+        suffix_wo_png = LABEL_SUFFIX[:-4]
+        label_filepaths = glob.glob(
+            osp.join(vistas_path, f'*/v2.0/labels/*[!{suffix_wo_png}].png'))
+
         seg_choice = args.choice
         if seg_choice == 'cityscapes':
             if args.nproc > 1:
