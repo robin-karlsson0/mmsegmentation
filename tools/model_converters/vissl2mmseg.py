@@ -7,7 +7,7 @@ import torch
 from mmcv.runner import CheckpointLoader
 
 
-def convert_vissl(ckpt):
+def convert_vissl(ckpt, conv_backbone=True, conv_decoder=True):
     """
     NOTE: Only extracts ResNet 50 backbone (for now?)
 
@@ -19,26 +19,113 @@ def convert_vissl(ckpt):
 
     for key, value in ckpt.items():
 
-        # Only convert backbone layers
-        if key.find('backbone') == -1:
-            continue
-
+        # Universal modifications
         # Remove prefix
         key = key.replace('_feature_blocks.model.', '')
 
-        # Change notation for the 'stem'
-        key = key.replace('layer0.0', 'conv1')
-        key = key.replace('layer0.1', 'bn1')
+        if key.find('backbone') == 0:
+            # Change notation for the 'stem'
+            key = key.replace('layer0.0', 'conv1')
+            key = key.replace('layer0.1', 'bn1')
 
-        new_ckpt[key] = value
+            new_ckpt[key] = value
+
+        elif key.find('ASSP') == 0:
+            # (1)
+            key = key.replace('ASSP.aspp1.0',
+                              'decode_head.aspp_modules.0.conv')
+            key = key.replace('ASSP.aspp1.1', 'decode_head.aspp_modules.0.bn')
+            # (2)
+            key = key.replace(
+                'ASSP.aspp2.depthwise_conv',
+                'decode_head.aspp_modules.1.depthwise_conv.conv')
+            key = key.replace('ASSP.aspp2.depthwise_bn',
+                              'decode_head.aspp_modules.1.depthwise_conv.bn')
+            key = key.replace(
+                'ASSP.aspp2.pointwise_conv',
+                'decode_head.aspp_modules.1.pointwise_conv.conv')
+            key = key.replace('ASSP.aspp2.pointwise_bn',
+                              'decode_head.aspp_modules.1.pointwise_conv.bn')
+            # (3)
+            key = key.replace(
+                'ASSP.aspp3.depthwise_conv',
+                'decode_head.aspp_modules.2.depthwise_conv.conv')
+            key = key.replace('ASSP.aspp3.depthwise_bn',
+                              'decode_head.aspp_modules.2.depthwise_conv.bn')
+            key = key.replace(
+                'ASSP.aspp3.pointwise_conv',
+                'decode_head.aspp_modules.2.pointwise_conv.conv')
+            key = key.replace('ASSP.aspp3.pointwise_bn',
+                              'decode_head.aspp_modules.2.pointwise_conv.bn')
+            # (4)
+            key = key.replace(
+                'ASSP.aspp4.depthwise_conv',
+                'decode_head.aspp_modules.3.depthwise_conv.conv')
+            key = key.replace('ASSP.aspp4.depthwise_bn',
+                              'decode_head.aspp_modules.3.depthwise_conv.bn')
+            key = key.replace(
+                'ASSP.aspp4.pointwise_conv',
+                'decode_head.aspp_modules.3.pointwise_conv.conv')
+            key = key.replace('ASSP.aspp4.pointwise_bn',
+                              'decode_head.aspp_modules.3.pointwise_conv.bn')
+            # (5)
+            key = key.replace('ASSP.avg_pool.1',
+                              'decode_head.image_pool.1.conv')
+            key = key.replace('ASSP.avg_pool.2', 'decode_head.image_pool.1.bn')
+
+            # Low-level features from ASSP --> Decoder?
+            key = key.replace('ASSP.conv1', 'decode_head.bottleneck.conv')
+            key = key.replace('ASSP.bn1', 'decode_head.bottleneck.bn')
+
+            new_ckpt[key] = value
+
+        elif key.find('decoder') == 0:
+            # ?
+            key = key.replace('decoder.conv1',
+                              'decode_head.c1_bottleneck.conv')
+            key = key.replace('decoder.bn1', 'decode_head.c1_bottleneck.bn')
+            # (1)
+            key = key.replace(
+                'decoder.output.0.depthwise_conv',
+                'decode_head.sep_bottleneck.0.depthwise_conv.conv')
+            key = key.replace(
+                'decoder.output.0.depthwise_bn',
+                'decode_head.sep_bottleneck.0.depthwise_conv.bn')
+            key = key.replace(
+                'decoder.output.0.pointwise_conv',
+                'decode_head.sep_bottleneck.0.pointwise_conv.conv')
+            key = key.replace(
+                'decoder.output.0.pointwise_bn',
+                'decode_head.sep_bottleneck.0.pointwise_conv.bn')
+            # (2)
+            key = key.replace(
+                'decoder.output.1.depthwise_conv',
+                'decode_head.sep_bottleneck.1.depthwise_conv.conv')
+            key = key.replace(
+                'decoder.output.1.depthwise_bn',
+                'decode_head.sep_bottleneck.1.depthwise_conv.bn')
+
+            key = key.replace(
+                'decoder.output.1.pointwise_conv',
+                'decode_head.sep_bottleneck.1.pointwise_conv.conv')
+            key = key.replace(
+                'decoder.output.1.pointwise_bn',
+                'decode_head.sep_bottleneck.1.pointwise_conv.bn')
+            # (3)
+            key = key.replace('decoder.output.2', 'decode_head.conv_seg')
+
+            new_ckpt[key] = value
+
+        else:
+            print(f'Unknown state key: {key} | {value.size()}')
 
     return new_ckpt
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Convert keys in VISSL pretrained Dense SwAV models to \
-                     MMSegmentation style.')
+        description=('Convert keys in VISSL pretrained Dense SwAV models to'
+                     'MMSegmentation style.'))
     parser.add_argument('src', help='src model path or url')
     # The dst path must be a full path of the new checkpoint.
     parser.add_argument('dst', help='save path')
