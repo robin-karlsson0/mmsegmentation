@@ -26,6 +26,7 @@ class EncoderDecoderVISSLFCN(BaseSegmentor):
                  decode_head,
                  train_cfg=None,
                  test_cfg=None,
+                 pretrained=None,
                  init_cfg=None):
         super(EncoderDecoderVISSLFCN, self).__init__(init_cfg)
 
@@ -118,6 +119,8 @@ class EncoderDecoderVISSLFCN(BaseSegmentor):
     def _decode_head_forward_test(self, x, img_metas):
         """Run forward function and calculate loss for decode head in
         inference."""
+        # FCN head uses tensor by list index
+        x = [x]
         seg_logits = self.decode_head.forward_test(x, img_metas, self.test_cfg)
         return seg_logits
 
