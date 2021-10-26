@@ -7,7 +7,7 @@ import torch
 from mmcv.runner import CheckpointLoader
 
 
-def convert_vissl(ckpt, conv_backbone=True, conv_decoder=True):
+def convert_vice(ckpt):
     """
     NOTE: Only extracts ResNet 50 backbone (for now?)
 
@@ -122,6 +122,28 @@ def convert_vissl(ckpt, conv_backbone=True, conv_decoder=True):
     return new_ckpt
 
 
+def convert_model_zoo(ckpt):
+    """Convert baseline backbone models provided by VISSL.
+
+    Ref: https://github.com/facebookresearch/vissl/blob/main/MODEL_ZOO.md
+
+    Args:
+        ckpt (OrderedDict): State dict w. original notations.
+    """
+
+    new_ckpt = OrderedDict()
+
+    for key, value in ckpt.items():
+
+        # Universal modifications
+        # Substitute prefix
+        key = key.replace('_feature_blocks', 'backbone')
+
+        new_ckpt[key] = value
+
+    return new_ckpt
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=('Convert keys in VISSL pretrained Dense SwAV models to'
@@ -129,13 +151,20 @@ def main():
     parser.add_argument('src', help='src model path or url')
     # The dst path must be a full path of the new checkpoint.
     parser.add_argument('dst', help='save path')
+    parser.add_argument('--type', default='vice', help='vice or model_zoo')
     args = parser.parse_args()
 
     checkpoint = CheckpointLoader.load_checkpoint(args.src, map_location='cpu')
     state_dict = checkpoint['classy_state_dict']['base_model']['model'][
         'trunk']
 
-    weight = convert_vissl(state_dict)
+    type = args.type
+    if type == 'vice':
+        weight = convert_vice(state_dict)
+    elif type == 'model_zoo':
+        weight = convert_model_zoo(state_dict)
+    else:
+        raise Exception(f'Undefinied type: {type}')
     mmcv.mkdir_or_exist(osp.dirname(args.dst))
     torch.save(weight, args.dst)
 
