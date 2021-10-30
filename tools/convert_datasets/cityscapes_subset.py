@@ -97,31 +97,39 @@ def sampled_cityscapes_dataset(cityscapes_path,
     mmcv.mkdir_or_exist(
         osp.join(cityscapes_path, subset_name, 'gtFine', 'test'))
 
-    # Lists containing all images and labels to symlinked
-    img_filepaths = sorted(
-        glob.glob(osp.join(cityscapes_path, 'leftImg8bit/train/*/*.png')))
+    for split in ['train', 'val']:
 
-    ann_filepaths = sorted(
-        glob.glob(
-            osp.join(cityscapes_path,
-                     'gtFine/train/*/*_gtFine_labelTrainIds.png')))
+        # Lists containing all images and labels to symlinked
+        img_filepaths = sorted(
+            glob.glob(
+                osp.join(cityscapes_path, f'leftImg8bit/{split}/*/*.png')))
 
-    # Randomize order of (image, label) pairs
-    pairs = list(zip(img_filepaths, ann_filepaths))
-    random.shuffle(pairs)
-    img_filepaths, ann_filepaths = zip(*pairs)
+        ann_filepaths = sorted(
+            glob.glob(
+                osp.join(cityscapes_path,
+                         f'gtFine/{split}/*/*_gtFine_labelTrainIds.png')))
 
-    # Extract subset
-    img_filepaths_subset = img_filepaths[:num_samples]
-    ann_filepaths_subset = ann_filepaths[:num_samples]
+        # Randomize order of (image, label) pairs
+        pairs = list(zip(img_filepaths, ann_filepaths))
+        random.shuffle(pairs)
+        img_filepaths, ann_filepaths = zip(*pairs)
 
-    create_split_dir(
-        img_filepaths_subset,
-        ann_filepaths_subset,
-        'train',
-        cityscapes_path,
-        subset_name,
-        use_symlinks=use_symlinks)
+        # Extract subset
+        if split == 'train':
+            img_filepaths = img_filepaths[:num_samples]
+            ann_filepaths = ann_filepaths[:num_samples]
+
+        print(f'Split: {split}')
+        print(f'    imgs: {len(img_filepaths)}')
+        print(f'    anns: {len(ann_filepaths)}')
+
+        create_split_dir(
+            img_filepaths,
+            ann_filepaths,
+            split,
+            cityscapes_path,
+            subset_name,
+            use_symlinks=use_symlinks)
 
 
 def parse_args():
