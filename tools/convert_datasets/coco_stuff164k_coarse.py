@@ -250,7 +250,10 @@ def main():
                 val2017/
                     .png
             images/
-                .jpg
+                train2017/
+                    .jpg
+                val2017/
+                    .jpg
 
     2. Download the 'curated image' idx lists and extract in dataset directory.
        Ref: https://www.robots.ox.ac.uk/~xuji/datasets/
@@ -342,7 +345,7 @@ def main():
 
             for idx in sample_idxs:
 
-                img_filepath = osp.join(out_dir, f'images/{idx}.jpg')
+                img_filepath = osp.join(out_dir, f'images/{split}/{idx}.jpg')
                 ann_filepath = osp.join(
                     out_dir, f'annotations/{split}/{idx}{LABEL_SUFFIX}.png')
 
