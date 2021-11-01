@@ -6,6 +6,7 @@ from .builder import DATASETS, PIPELINES, build_dataloader, build_dataset
 from .chase_db1 import ChaseDB1Dataset
 from .cityscapes import CityscapesDataset
 from .coco_stuff import COCOStuffDataset
+from .coco_stuff_coarse import COCOStuffCoarseDataset
 from .custom import CustomDataset
 from .dark_zurich import DarkZurichDataset
 from .dataset_wrappers import ConcatDataset, RepeatDataset
@@ -26,5 +27,6 @@ __all__ = [
     'PascalContextDataset59', 'ChaseDB1Dataset', 'DRIVEDataset', 'HRFDataset',
     'STAREDataset', 'DarkZurichDataset', 'NightDrivingDataset',
     'COCOStuffDataset', 'A2D2Dataset18Classes', 'A2D2Dataset34Classes',
-    'GTA5Dataset', 'MapillaryVistasDataset', 'IDDDataset'
+    'GTA5Dataset', 'MapillaryVistasDataset', 'IDDDataset',
+    'COCOStuffCoarseDataset'
 ]
