@@ -4,10 +4,11 @@ model = dict(
     type='EncoderDecoderVISSLFCN',
     decode_head=dict(
         type='FCNHead',
-        in_channels=128,
+        in_channels=64,
         in_index=0,  # For extracting x <-- [x]
         channels=128,
         num_convs=3,
+        kernel_size=3,
         concat_input=False,
         dropout_ratio=0.0,
         num_classes=19,
@@ -18,4 +19,10 @@ model = dict(
             type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0)),
     # model training and testing settings
     train_cfg=dict(),
-    test_cfg=dict(mode='whole'))
+    test_cfg=dict(mode='whole'),
+    vissl_params=dict(
+        vissl_dir='/home/robin/projects/vissl',
+        config_path=None,
+        checkpoint_path=None,
+        output_type='trunk',
+        default_config_path='vissl/config/defaults.yaml'))

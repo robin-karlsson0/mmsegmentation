@@ -3,7 +3,6 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import yaml
 from inference_module import DenseSwAVModule, InferenceInterface
 
 from mmseg.core import add_prefix
@@ -26,7 +25,7 @@ class EncoderDecoderVISSLFCN(BaseSegmentor):
                  decode_head,
                  train_cfg=None,
                  test_cfg=None,
-                 pretrained=None,
+                 vissl_params=None,
                  init_cfg=None):
         super(EncoderDecoderVISSLFCN, self).__init__(init_cfg)
 
@@ -40,9 +39,8 @@ class EncoderDecoderVISSLFCN(BaseSegmentor):
         ############################
         #  Initialize VISSL model
         ############################
-        # Read VISSL configuration parameters from file
-        with open('./vissl_params.yaml') as file:
-            vissl_params = yaml.load(file, Loader=yaml.FullLoader)
+        if vissl_params is None:
+            raise Exception('ERROR: Missing VISSL model parameters dict')
 
         vissl_dir = vissl_params['vissl_dir']
         config_path = os.path.join(vissl_dir, vissl_params['config_path'])
@@ -167,6 +165,23 @@ class EncoderDecoderVISSLFCN(BaseSegmentor):
         # VISSL model inference
         with torch.no_grad():
             z = self.vissl_module.forward(img)
+
+        # TMP visualization
+        # import pickle
+        # import numpy as np
+        # import matplotlib.pyplot as plt
+        # pca = pickle.load(open("/home/robin/projects/vissl/pca.pkl", "rb"))
+        # rgb_map = self.vissl_module.viz(z, pca)
+
+        # plt.subplot(1, 4, 1)
+        # plt.imshow(np.transpose(rgb_map[0].cpu().numpy(), (1, 2, 0)))
+        # plt.subplot(1, 4, 2)
+        # plt.imshow(np.transpose(rgb_map[1].cpu().numpy(), (1, 2, 0)))
+        # plt.subplot(1, 4, 3)
+        # plt.imshow(np.transpose(rgb_map[2].cpu().numpy(), (1, 2, 0)))
+        # plt.subplot(1, 4, 4)
+        # plt.imshow(np.transpose(rgb_map[3].cpu().numpy(), (1, 2, 0)))
+        # plt.show()
 
         # 'Identity' backbone
         x = self.extract_feat(z)
