@@ -144,6 +144,64 @@ SEG_COLOR_DICT_CITYSCAPES = {
     (53, 46, 82): 255,  # Rain dirt --> Dynamic (void)
 }
 
+SEG_COLOR_DICT_BEV = {
+    (255, 0, 0): 2,  # Car 1 --> Car
+    (200, 0, 0): 2,  # Car 2 --> 19
+    (150, 0, 0): 2,  # Car 3 --> Car
+    (128, 0, 0): 2,  # Car 4 --> Car
+    (182, 89, 6): 3,  # Bicycle 1 --> Bicycle
+    (150, 50, 4): 3,  # Bicycle 2 --> Bicycle
+    (90, 30, 1): 3,  # Bicycle 3 --> Bicycle
+    (90, 30, 30): 3,  # Bicycle 4 --> Bicycle
+    (204, 153, 255): 3,  # Pedestrian 1 --> Person
+    (189, 73, 155): 3,  # Pedestrian 2 --> Person
+    (239, 89, 191): 3,  # Pedestrian 3 --> Person
+    (255, 128, 0): 2,  # Truck 1 --> Truck
+    (200, 128, 0): 2,  # Truck 2 --> Truck
+    (150, 128, 0): 2,  # Truck 3 --> Truck
+    (0, 0, 100): 2,  # Tractor --> Utility vehicle (*not in CS)
+    (0, 255, 0): 2,  # Small vehicles 1 --> Motorcycle
+    (0, 200, 0): 2,  # Small vehicles 2 --> Motorcycle
+    (0, 150, 0): 2,  # Small vehicles 3 --> Motorcycle
+    (0, 128, 255): 5,  # Traffic signal 1 --> Traffic light
+    (30, 28, 158): 5,  # Traffic signal 2 --> Traffic light
+    (60, 28, 100): 5,  # Traffic signal 3 --> Traffic light
+    (0, 255, 255): 5,  # Traffic sign 1 --> Traffic sign
+    (30, 220, 220): 5,  # Traffic sign 2 --> Traffic sign
+    (60, 157, 199): 5,  # Traffic sign 3 --> Traffic sign
+    (255, 255, 0): 2,  # Utility vehicle 1 --> Utility vehicle (*not in CS)
+    (255, 255, 200): 2,  # Utility vehicle 2 --> Utility vehicle (*not in CS)
+    (233, 100, 0): 5,  # Sidebars --> Poles
+    (110, 110, 0): 0,  # Speed bumper --> Road
+    (128, 128, 0): 5,  # Curbstone --> Sidewalk
+    (255, 193, 37): 1,  # Solid line --> Road
+    (64, 0, 64): 5,  # Irrelevant signs --> Background (*not in CS)
+    (185, 122, 87): 5,  # Road blocks --> Wall
+    (139, 99, 108): 5,  # Non-drivable street --> Background (*not in CS)
+    (210, 50, 115): 1,  # Zebra crossing --> Road
+    (255, 0, 128): 5,  # Obstacles / trash --> Background (*not in CS)
+    (255, 246, 143): 5,  # Poles --> Poles
+    (150, 0, 150): 0,  # RD restricted area --> Road
+    (204, 255, 153): 5,  # Animals --> Animal (*not in CS)
+    (238, 162, 173): 5,  # Grid structure --> Fence
+    (33, 44, 177): 5,  # Signal corpus --> Traffic light
+    (180, 50, 180): 0,  # Drivable cobblestone --> Road
+    (255, 70, 185): 5,  # Electronic traffic --> Background (*not in CS)
+    (238, 233, 191): 0,  # Slow drive area --> Road
+    (147, 253, 194): 5,  # Nature object --> Vegetation
+    (150, 150, 200): 0,  # Parking area --> Road
+    (180, 150, 200): 5,  # Sidewalk --> Sidewalk
+    (72, 209, 204): 255,  # Ego car --> Static (void)
+    (200, 125, 210): 1,  # Painted driv. instr. --> Road
+    (159, 121, 238): 5,  # Traffic guide obj. --> Wall
+    (128, 0, 255): 1,  # Dashed line --> Road
+    (255, 0, 255): 0,  # RD normal street --> Road
+    (135, 206, 255): 4,  # Sky --> Sky
+    (241, 230, 255): 5,  # Buildings --> Building
+    (96, 69, 143): 255,  # Blurred area --> Static (void)
+    (53, 46, 82): 255,  # Rain dirt --> Dynamic (void)
+}
+
 
 def modify_label_filename(label_filepath, label_choice):
     """Returns a mmsegmentation-combatible label filename."""
@@ -226,6 +284,40 @@ def convert_cityscapes_trainids(label_filepath, ignore_id=255):
 
     # Save new 'trainids' semantic label
     label_filepath = modify_label_filename(label_filepath, 'cityscapes')
+    label_img = mod_label.astype(np.uint8)
+    mmcv.imwrite(label_img, label_filepath)
+
+
+def convert_bev_trainids(label_filepath, ignore_id=255):
+    """Saves a new semantic label following the BEV 'trainids' format.
+
+    The new image is saved into the same directory as the original image having
+    an additional suffix.
+    Args:
+        label_filepath: Path to the original semantic label.
+        ignore_id: Default value for unlabeled elements.
+    """
+    # Read label file as Numpy array (H, W, 3)
+    orig_label = mmcv.imread(label_filepath, channel_order='rgb')
+
+    # Empty array with all elements set as 'ignore id' label
+    H, W, _ = orig_label.shape
+    mod_label = ignore_id * np.ones((H, W), dtype=int)
+
+    seg_colors = list(SEG_COLOR_DICT_BEV.keys())
+    for seg_color in seg_colors:
+        # The operation produce (H,W,3) array of (i,j,k)-wise truth values
+        mask = (orig_label == seg_color)
+        # Take the product channel-wise to falsify any partial match and
+        # collapse RGB channel dimension (H,W,3) --> (H,W)
+        #   Ex: [True, False, False] --> [False]
+        mask = np.prod(mask, axis=-1)
+        mask = mask.astype(bool)
+        # Segment masked elements with 'trainIds' value
+        mod_label[mask] = SEG_COLOR_DICT_BEV[seg_color]
+
+    # Save new 'trainids' semantic label
+    label_filepath = modify_label_filename(label_filepath, 'bev')
     label_img = mod_label.astype(np.uint8)
     mmcv.imwrite(label_img, label_filepath)
 
@@ -415,7 +507,7 @@ def parse_args():
         '--choice',
         default='cityscapes',
         help='Label conversion type choice: \'cityscapes\' (18 classes) or '
-        '\'a2d2\' (34 classes)')
+        '\'a2d2\' (34 classes), \'bev\' (6 classes)')
     parser.add_argument(
         '--val', default=0.103, type=float, help='Validation set sample ratio')
     parser.add_argument(
