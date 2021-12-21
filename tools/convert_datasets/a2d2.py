@@ -13,6 +13,7 @@ random.seed(14)
 # Global variables for specifying label suffix according to class count
 LABEL_SUFFIX_18_CLS = '_18LabelTrainIds.png'
 LABEL_SUFFIX_34_CLS = '_34LabelTrainIds.png'
+LABEL_SUFFIX_BEV = '_bevTrainIds.png'
 
 # Dictionaries specifying which A2D2 segmentation color corresponds to
 
@@ -214,6 +215,8 @@ def modify_label_filename(label_filepath, label_choice):
         label_filepath = label_filepath.replace('.png', LABEL_SUFFIX_34_CLS)
     elif label_choice == 'cityscapes':
         label_filepath = label_filepath.replace('.png', LABEL_SUFFIX_18_CLS)
+    elif label_choice == 'bev':
+        label_filepath = label_filepath.replace('.png', LABEL_SUFFIX_BEV)
     else:
         raise ValueError
     return label_filepath
@@ -430,6 +433,8 @@ def restructure_a2d2_directory(a2d2_path,
         label_suffix = LABEL_SUFFIX_34_CLS
     elif label_choice == 'cityscapes':
         label_suffix = LABEL_SUFFIX_18_CLS
+    elif label_choice == 'bev':
+        label_suffix = LABEL_SUFFIX_BEV
     else:
         raise ValueError
     ann_filepaths = sorted(
@@ -613,6 +618,12 @@ def main():
                                              label_filepaths, args.nproc)
             else:
                 mmcv.track_progress(convert_a2d2_trainids, label_filepaths)
+        elif seg_choice == 'bev':
+            if args.nproc > 1:
+                mmcv.track_parallel_progress(convert_bev_trainids,
+                                             label_filepaths, args.nproc)
+            else:
+                mmcv.track_progress(convert_bev_trainids, label_filepaths)
         else:
             raise ValueError
 
