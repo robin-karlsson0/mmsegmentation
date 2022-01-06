@@ -291,14 +291,14 @@ def generate_crop(imgpath, H=2710, W=3384, H_cropped=1010):
     bbox = np.array([0, H - H_cropped, W, H])
     img = mmcv.imread(imgpath, channel_order='bgr')
     img = mmcv.imcrop(img, bbox)
-    # Create cropped image path
-    file_extension = osp.splitext(imgpath)[-1]
-    if file_extension == '.jpg':
+    # Create cropped image path while avoiding recursive duplication
+    file_ending = imgpath.split('_')[-1]
+    if file_ending == '5.jpg' or file_ending == '6.jpg':
         crop_imgpath = imgpath.replace('.jpg', '_crop.jpg')
-    elif file_extension == '.png':
-        crop_imgpath = imgpath.replace('.png', '_crop.png')
+    elif file_ending == 'bin.png':
+        crop_imgpath = imgpath.replace('bin.png', 'bin_crop.png')
     else:
-        raise ValueError
+        raise ValueError(f'Invalid file ending: {file_ending}')
 
     mmcv.imwrite(img, crop_imgpath)
 
@@ -330,12 +330,6 @@ def parse_args():
         action='store_false',
         help='Skips converting label images')
     parser.set_defaults(convert=True)
-    parser.add_argument(
-        '--no-overwrite',
-        dest='overwrite',
-        action='store_false',
-        help='Do not overwrite existing modified label files')
-    parser.set_defaults(overwrite=True)
     parser.add_argument(
         '--no-restruct',
         dest='restruct',
