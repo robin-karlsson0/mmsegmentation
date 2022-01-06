@@ -16,48 +16,50 @@ LABEL_SUFFIX_BINARY = '_BinaryTrainIds.png'
 # Dictionaries specifying which Apolloscape segmentation color corresponds to
 # which 'trainId' value
 #     Key: RGB color --> Value: trainId integer
-# Ref: https://github.com/ApolloScapeAuto/dataset-api/blob/master/lane_segmentation/helpers/laneMarkDetection.py
+# Ref: https://github.com/ApolloScapeAuto/dataset-api/blob/master/
+#          lane_segmentation/helpers/laneMarkDetection.py
 
+# Only color non-markings black for speedup
 SEG_COLOR_DICT_BINARY = {
-    (  0,   0,   0): 0, # Void
-    ( 70, 130, 180): 1,
-    (220,  20,  60): 1,
-    (128,   0, 128): 1,
-    (255,   0,   0): 1,
-    (  0,   0,  60): 1,
-    (  0,  60, 100): 1,
-    (  0,   0, 142): 1,
-    (119,  11,  32): 1,
-    (244,  35, 232): 1,
-    (  0,   0, 160): 1,
-    (153, 153, 153): 1,
-    (220, 220,   0): 1,
-    (250, 170,  30): 1,
-    (102, 102, 156): 1,
-    (128,   0,   0): 1,
-    (128,  64, 128): 1,
-    (238, 232, 170): 1,
-    (190, 153, 153): 1,
-    (  0,   0, 230): 1,
-    (128, 128,   0): 1,
-    (128,  78, 160): 1,
-    (150, 100, 100): 1,
-    (255, 165,   0): 1,
-    (180, 165, 180): 1,
-    (107, 142,  35): 1,
-    (201, 255, 229): 1,
-    (0,   191, 255): 1,
-    ( 51, 255,  51): 1,
-    (250, 128, 114): 1,
-    (127, 255,   0): 1,
-    (255, 128,   0): 1,
-    (  0, 255, 255): 1,
-    (178, 132, 190): 1,
-    (128, 128,  64): 1,
-    (102,   0, 204): 1,
-    (  0, 153, 153): 255, # Noise <-- Ignored
-    (255, 255, 255): 255, # Ignored <-- Ignored
+    (0, 0, 0): 0,  # Void
+    (0, 153, 153): 255,  # Noise <-- Ignored
+    (255, 255, 255): 0,  # Ignored <-- Void (ego-car)
 }
+#    (70, 130, 180): 1,
+#    (220, 20, 60): 1,
+#    (128, 0, 128): 1,
+#    (255, 0, 0): 1,
+#    (0, 0, 60): 1,
+#    (0, 60, 100): 1,
+#    (0, 0, 142): 1,
+#    (119, 11, 32): 1,
+#    (244, 35, 232): 1,
+#    (0, 0, 160): 1,
+#    (153, 153, 153): 1,
+#    (220, 220, 0): 1,
+#    (250, 170, 30): 1,
+#    (102, 102, 156): 1,
+#    (128, 0, 0): 1,
+#    (128, 64, 128): 1,
+#    (238, 232, 170): 1,
+#    (190, 153, 153): 1,
+#    (0, 0, 230): 1,
+#    (128, 128, 0): 1,
+#    (128, 78, 160): 1,
+#    (150, 100, 100): 1,
+#    (255, 165, 0): 1,
+#    (180, 165, 180): 1,
+#    (107, 142, 35): 1,
+#    (201, 255, 229): 1,
+#    (0, 191, 255): 1,
+#    (51, 255, 51): 1,
+#    (250, 128, 114): 1,
+#    (127, 255, 0): 1,
+#    (255, 128, 0): 1,
+#    (0, 255, 255): 1,
+#    (178, 132, 190): 1,
+#    (128, 128, 64): 1,
+#    (102, 0, 204): 1,
 
 
 def modify_label_filename(label_filepath, label_choice):
@@ -74,7 +76,7 @@ def modify_label_filename(label_filepath, label_choice):
     return label_filepath
 
 
-def convert_binary_trainids(label_filepath, ignore_id=255, overwrite=False):
+def convert_binary_trainids(label_filepath, ignore_id=1, overwrite=True):
     """Saves a new semantic label replacing RGB values with label categories.
 
     The new image is saved into the same directory as the original image having
@@ -94,8 +96,8 @@ def convert_binary_trainids(label_filepath, ignore_id=255, overwrite=False):
     # Read label file as Numpy array (H, W, 3)
     try:
         orig_label = mmcv.imread(label_filepath, channel_order='rgb')
-    except:
-        print(f"\nFailed to read file \'{label_filepath}\' --> Skip\n")
+    except Exception as e:
+        print(f"{e}\nFailed to read file \'{label_filepath}\' --> Skip\n")
         return
 
     # Empty array with all elements set as the default label
@@ -114,7 +116,6 @@ def convert_binary_trainids(label_filepath, ignore_id=255, overwrite=False):
         # Segment masked elements with 'trainIds' value
         mod_label[mask] = SEG_COLOR_DICT_BINARY[seg_color]
 
-    
     label_img = mod_label.astype(np.uint8)
     mmcv.imwrite(label_img, new_label_filepath)
 
@@ -222,17 +223,20 @@ def restructure_directory(root_path,
     mmcv.mkdir_or_exist(osp.join(root_path, 'annotations', 'test'))
 
     # Lists containing all images and labels to symlinked
-    
-    img_filepaths = sorted(glob.glob(osp.join(
-        root_path, 'ColorImage_road*/ColorImage/Record*/Camera_*/*.jpg')))
+
+    img_filepaths = sorted(
+        glob.glob(
+            osp.join(root_path,
+                     'ColorImage_road*/ColorImage/Record*/Camera_*/*.jpg')))
 
     if label_choice == 'binary':
         label_suffix = LABEL_SUFFIX_BINARY
     else:
         raise ValueError
     ann_filepaths = sorted(
-        glob.glob(osp.join(
-            root_path, '*/Label/Record*/Camera_*/*{}'.format(label_suffix))))
+        glob.glob(
+            osp.join(root_path,
+                     '*/Label/Record*/Camera_*/*{}'.format(label_suffix))))
 
     # Randomize order of (image, label) pairs
     pairs = list(zip(img_filepaths, ann_filepaths))
@@ -282,6 +286,23 @@ def restructure_directory(root_path,
         use_symlinks=use_symlinks)
 
 
+def generate_crop(imgpath, H=2710, W=3384, H_cropped=1010):
+    """Generate cropped versions of images containing the bottom part."""
+    bbox = np.array([0, H - H_cropped, W, H])
+    img = mmcv.imread(imgpath, channel_order='bgr')
+    img = mmcv.imcrop(img, bbox)
+    # Create cropped image path
+    file_extension = osp.splitext(imgpath)[-1]
+    if file_extension == '.jpg':
+        crop_imgpath = imgpath.replace('.jpg', '_crop.jpg')
+    elif file_extension == '.png':
+        crop_imgpath = imgpath.replace('.png', '_crop.png')
+    else:
+        raise ValueError
+
+    mmcv.imwrite(img, crop_imgpath)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description='Convert Apolloscape Lane Segmentation annotations to \
@@ -291,6 +312,18 @@ def parse_args():
         help='Apolloscape Lane Segmentation directory absolute path \
               (NOT the symbolically linked one!)')
     parser.add_argument('-o', '--out-dir', help='Output path')
+    parser.add_argument(
+        '--no-crop-gen',
+        dest='crop_gen',
+        action='store_false',
+        help='Skips generating cropped versions of images and labels')
+    parser.set_defaults(crop_gen=True)
+    parser.add_argument(
+        '--no-crops',
+        dest='use_crops',
+        action='store_false',
+        help='Use original full images instead of crops')
+    parser.set_defaults(use_crops=True)
     parser.add_argument(
         '--no-convert',
         dest='convert',
@@ -337,10 +370,10 @@ def parse_args():
 
 def main():
     """A script for making Apolloscape's Lane Segmentation dataset compatible
-       with mmsegmentation.
+    with mmsegmentation.
 
     NOTE: The input argument path must be the ABSOLUTE PATH to the dataset
-          - NOT the symbolically linked one (i.e. 
+          - NOT the symbolically linked one (i.e.
             data/apolloscape_lane_segmentation)
 
     Directory restructuring:
@@ -353,7 +386,8 @@ def main():
         links.
 
     Example usage:
-        python tools/convert_datasets/apolloscape_lane_seg.py path/to/camera_lidar_semantic
+        python tools/convert_datasets/apolloscape_lane_seg.py
+            path/to/camera_lidar_semantic
     """
     args = parse_args()
     root_path = args.root_path
@@ -362,12 +396,36 @@ def main():
 
     # Create a list of filepaths to all original labels
     # NOTE: Original label files have a number before '.png'
-    
-    label_filepaths = glob.glob(osp.join(
-        root_path, 'Labels_road*/Label/Record*/Camera_*/*[0-9]_bin.png'))
+    img_filepaths = glob.glob(
+        osp.join(root_path,
+                 'ColorImage_road*/ColorImage/Record*/Camera_*/*[0-9].jpg'))
+    label_filepaths = glob.glob(
+        osp.join(root_path,
+                 'Labels_road*/Label/Record*/Camera_*/*[0-9]_bin.png'))
+
+    if args.crop_gen:
+        print('Generating cropped images')
+        if args.nproc > 1:
+            mmcv.track_parallel_progress(generate_crop, img_filepaths,
+                                         args.nproc)
+            mmcv.track_parallel_progress(generate_crop, label_filepaths,
+                                         args.nproc)
+        else:
+            mmcv.track_progress(generate_crop, img_filepaths)
+            mmcv.track_progress(generate_crop, label_filepaths)
+
+    if args.use_crops:
+        print('Use cropped images')
+        img_filepaths = [
+            path.replace('.jpg', '_crop.jpg') for path in img_filepaths
+        ]
+        label_filepaths = [
+            path.replace('.png', '_crop.png') for path in label_filepaths
+        ]
 
     # Convert segmentation images to 'TrainIds' values
     if args.convert:
+        print('Converting segmentation labels')
         seg_choice = args.choice
         if seg_choice == 'binary':
             if args.nproc > 1:
