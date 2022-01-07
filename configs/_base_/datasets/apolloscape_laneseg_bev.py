@@ -1,12 +1,12 @@
 # dataset settings
-dataset_type = 'ApolloscapeLaneSegDatasetBinary'
-data_root = 'data/apolloscape_lane_seg/'
+dataset_type = 'ApolloscapeLanesegDatasetBEV'
+data_root = 'data/apolloscape_laneseg/'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
-# 0.5x (3384,2710) --> (1692, 1355) closer to Cityscapes
-img_scale = (1692, 1355)
+# 0.5x (3384,1010) --> (1692, 505)
+img_scale = (1692, 505)
 # Approx. 1/4 of img width and full height
-crop_size = (480, 1355)
+crop_size = (1150, 505)
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations'),
@@ -53,5 +53,5 @@ data = dict(
         type=dataset_type,
         data_root=data_root,
         img_dir='images/val',
-        ann_dir='annotations/val',
+        ann_dir='annotations/test',
         pipeline=test_pipeline))

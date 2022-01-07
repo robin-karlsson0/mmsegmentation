@@ -226,8 +226,9 @@ def restructure_directory(root_path,
 
     img_filepaths = sorted(
         glob.glob(
-            osp.join(root_path,
-                     'ColorImage_road*/ColorImage/Record*/Camera_*/*.jpg')))
+            osp.join(
+                root_path,
+                'ColorImage_road*/ColorImage/Record*/Camera_*/*_crop.jpg')))
 
     if label_choice == 'binary':
         label_suffix = LABEL_SUFFIX_BINARY
@@ -235,8 +236,9 @@ def restructure_directory(root_path,
         raise ValueError
     ann_filepaths = sorted(
         glob.glob(
-            osp.join(root_path,
-                     '*/Label/Record*/Camera_*/*{}'.format(label_suffix))))
+            osp.join(
+                root_path,
+                '*/Label/Record*/Camera_*/*_crop{}'.format(label_suffix))))
 
     # Randomize order of (image, label) pairs
     pairs = list(zip(img_filepaths, ann_filepaths))
@@ -341,9 +343,9 @@ def parse_args():
         default='binary',
         help='Label conversion type choice: \'binary\' (2 classes)')
     parser.add_argument(
-        '--val', default=0.103, type=float, help='Validation set sample ratio')
+        '--val', default=0.01, type=float, help='Validation set sample ratio')
     parser.add_argument(
-        '--test', default=0.197, type=float, help='Test set sample ratio')
+        '--test', default=0.01, type=float, help='Test set sample ratio')
     parser.add_argument(
         '--train-on-val-and-test',
         dest='train_on_val_and_test',

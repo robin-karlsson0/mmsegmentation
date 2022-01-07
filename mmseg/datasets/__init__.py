@@ -3,7 +3,7 @@ from .a2d2_18cls import A2D2Dataset18Classes
 from .a2d2_34cls import A2D2Dataset34Classes
 from .a2d2_bev import A2D2DatasetBEV
 from .ade import ADE20KDataset
-from .apolloscape_lane_seg import ApolloscapeLaneSegDatasetBinary
+from .apolloscape_laneseg import ApolloscapeLanesegDatasetBEV
 from .builder import DATASETS, PIPELINES, build_dataloader, build_dataset
 from .chase_db1 import ChaseDB1Dataset
 from .cityscapes import CityscapesDataset
@@ -26,5 +26,5 @@ __all__ = [
     'PascalContextDataset59', 'ChaseDB1Dataset', 'DRIVEDataset', 'HRFDataset',
     'STAREDataset', 'DarkZurichDataset', 'NightDrivingDataset',
     'COCOStuffDataset', 'LoveDADataset', 'A2D2Dataset18Classes',
-    'A2D2Dataset34Classes', 'A2D2DatasetBEV', 'ApolloscapeLaneSegDatasetBinary'
+    'A2D2Dataset34Classes', 'A2D2DatasetBEV', 'ApolloscapeLanesegDatasetBEV'
 ]
