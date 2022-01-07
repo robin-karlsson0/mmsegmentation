@@ -414,8 +414,7 @@ def restructure_a2d2_directory(a2d2_path,
         # training and the other part to validation split by a frame index
         if seq_id in VAL_SEQS:
             # Parse frame index from last part of filename
-            frame_idx = img_filepath.split('_')[-1]
-            frame_idx = int(frame_idx.replace('.png', ''))
+            frame_idx = int(img_filepath.split('_')[-2])
             # Add sample to validation split unless it is below a frame split
             # index for one of the sequences
             if seq_id == SPECIAL_SEQ_ID and frame_idx < SPECIAL_FRAME_SPLIT:
