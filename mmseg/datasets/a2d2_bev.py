@@ -35,12 +35,13 @@ class A2D2DatasetBEV(CustomDataset):
     Ref: https://www.a2d2.audi/a2d2/en/dataset.html
     """
 
-    CLASSES = ('road', 'marking', 'vehicle', 'pedestrian', 'sky', 'other')
+    CLASSES = ('background', 'lane markings')
 
-    PALETTE = [[128, 64, 128], [244, 35, 232], [70, 70, 70], [102, 102, 156],
-               [190, 153, 153], [153, 153, 153]]
+    PALETTE = [[0, 0, 0], [255, 255, 255]]
 
     def __init__(self, **kwargs):
         super(A2D2DatasetBEV, self).__init__(
-            img_suffix='.png', seg_map_suffix='_bevTrainIds.png', **kwargs)
+            img_suffix='crop.png',
+            seg_map_suffix='crop_BinaryLaneTrainIds.png',
+            **kwargs)
         assert osp.exists(self.img_dir) is not None

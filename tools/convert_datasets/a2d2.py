@@ -11,8 +11,9 @@ import numpy as np
 random.seed(14)
 
 # Global variables for specifying label suffix according to class count
-LABEL_SUFFIX_18_CLS = '_18LabelTrainIds.png'
+LABEL_SUFFIX_19_CLS = '_19LabelTrainIds.png'
 LABEL_SUFFIX_34_CLS = '_34LabelTrainIds.png'
+LABEL_SUFFIX_LANESEG = '_BinaryLaneTrainIds.png'
 LABEL_SUFFIX_BEV = '_bevTrainIds.png'
 
 # Dictionaries specifying which A2D2 segmentation color corresponds to
@@ -27,7 +28,7 @@ LABEL_SUFFIX_BEV = '_bevTrainIds.png'
 # - Rain dirt:    Ambiguous semantic.
 # The following segmentation class is merged:
 # - Speed bumper --> RD normal street (50% of dataset contains only one sample)
-SEG_COLOR_DICT_A2D2 = {
+SEG_COLOR_DICT_34_CLS = {
     (255, 0, 0): 27,  # Car 1
     (200, 0, 0): 27,  # Car 2
     (150, 0, 0): 27,  # Car 3
@@ -85,123 +86,80 @@ SEG_COLOR_DICT_A2D2 = {
     (53, 46, 82): 255,  # Rain dirt <-- IGNORED
 }
 
-# Cityscapes-like 'trainId' value
-#   key: RGB color, value: trainId (from Cityscapes)
-SEG_COLOR_DICT_CITYSCAPES = {
-    (255, 0, 0): 12,  # Car 1 --> Car
-    (200, 0, 0): 12,  # Car 2 --> 19
-    (150, 0, 0): 12,  # Car 3 --> Car
-    (128, 0, 0): 12,  # Car 4 --> Car
-    (182, 89, 6): 16,  # Bicycle 1 --> Bicycle
-    (150, 50, 4): 16,  # Bicycle 2 --> Bicycle
-    (90, 30, 1): 16,  # Bicycle 3 --> Bicycle
-    (90, 30, 30): 16,  # Bicycle 4 --> Bicycle
-    (204, 153, 255): 10,  # Pedestrian 1 --> Person
-    (189, 73, 155): 10,  # Pedestrian 2 --> Person
-    (239, 89, 191): 10,  # Pedestrian 3 --> Person
-    (255, 128, 0): 13,  # Truck 1 --> Truck
-    (200, 128, 0): 13,  # Truck 2 --> Truck
-    (150, 128, 0): 13,  # Truck 3 --> Truck
-    (0, 0, 100): 14,  # Tractor --> Utility vehicle (*not in CS)
-    (0, 255, 0): 15,  # Small vehicles 1 --> Motorcycle
-    (0, 200, 0): 15,  # Small vehicles 2 --> Motorcycle
-    (0, 150, 0): 15,  # Small vehicles 3 --> Motorcycle
-    (0, 128, 255): 6,  # Traffic signal 1 --> Traffic light
-    (30, 28, 158): 6,  # Traffic signal 2 --> Traffic light
-    (60, 28, 100): 6,  # Traffic signal 3 --> Traffic light
-    (0, 255, 255): 7,  # Traffic sign 1 --> Traffic sign
-    (30, 220, 220): 7,  # Traffic sign 2 --> Traffic sign
-    (60, 157, 199): 7,  # Traffic sign 3 --> Traffic sign
-    (255, 255, 0): 14,  # Utility vehicle 1 --> Utility vehicle (*not in CS)
-    (255, 255, 200): 14,  # Utility vehicle 2 --> Utility vehicle (*not in CS)
-    (233, 100, 0): 5,  # Sidebars --> Poles
-    (110, 110, 0): 0,  # Speed bumper --> Road
-    (128, 128, 0): 1,  # Curbstone --> Sidewalk
-    (255, 193, 37): 0,  # Solid line --> Road
-    (64, 0, 64): 17,  # Irrelevant signs --> Background (*not in CS)
-    (185, 122, 87): 3,  # Road blocks --> Wall
-    (139, 99, 108): 17,  # Non-drivable street --> Background (*not in CS)
-    (210, 50, 115): 0,  # Zebra crossing --> Road
-    (255, 0, 128): 17,  # Obstacles / trash --> Background (*not in CS)
-    (255, 246, 143): 5,  # Poles --> Poles
-    (150, 0, 150): 0,  # RD restricted area --> Road
-    (204, 255, 153): 11,  # Animals --> Animal (*not in CS)
-    (238, 162, 173): 4,  # Grid structure --> Fence
-    (33, 44, 177): 6,  # Signal corpus --> Traffic light
-    (180, 50, 180): 0,  # Drivable cobblestone --> Road
-    (255, 70, 185): 17,  # Electronic traffic --> Background (*not in CS)
-    (238, 233, 191): 0,  # Slow drive area --> Road
-    (147, 253, 194): 8,  # Nature object --> Vegetation
-    (150, 150, 200): 0,  # Parking area --> Road
-    (180, 150, 200): 1,  # Sidewalk --> Sidewalk
-    (72, 209, 204): 255,  # Ego car --> Static (void)
-    (200, 125, 210): 0,  # Painted driv. instr. --> Road
-    (159, 121, 238): 3,  # Traffic guide obj. --> Wall
-    (128, 0, 255): 0,  # Dashed line --> Road
-    (255, 0, 255): 0,  # RD normal street --> Road
-    (135, 206, 255): 9,  # Sky --> Sky
-    (241, 230, 255): 2,  # Buildings --> Building
+# Merged set of segmentation classes used by authors of original paper
+SEG_COLOR_DICT_19_CLS = {
+    (255, 0, 0): 5,  # Car 1 --> Cars
+    (200, 0, 0): 5,  # Car 2 --> Cars
+    (150, 0, 0): 5,  # Car 3 --> Cars
+    (128, 0, 0): 5,  # Car 4 --> Cars
+    (182, 89, 6): 17,  # Bicycle 1 --> Small traffic participants
+    (150, 50, 4): 17,  # Bicycle 2 --> Small traffic participants
+    (90, 30, 1): 17,  # Bicycle 3 --> Small traffic participants
+    (90, 30, 30): 17,  # Bicycle 4 --> Small traffic participants
+    (204, 153, 255): 15,  # Pedestrian 1 --> Pedestrians
+    (189, 73, 155): 15,  # Pedestrian 2 --> Pedestrians
+    (239, 89, 191): 15,  # Pedestrian 3 --> Pedestrians
+    (255, 128, 0): 12,  # Truck 1 --> Trucks
+    (200, 128, 0): 12,  # Truck 2 --> Trucks
+    (150, 128, 0): 12,  # Truck 3 --> Trucks
+    (0, 0, 100): 12,  # Tractor --> Trucks
+    (0, 255, 0): 17,  # Small vehicles 1 --> Small traffic participants
+    (0, 200, 0): 17,  # Small vehicles 2 --> Small traffic participants
+    (0, 150, 0): 17,  # Small vehicles 3 --> Small traffic participants
+    (0, 128, 255): 9,  # Traffic signal 1 --> Traffic Info
+    (30, 28, 158): 9,  # Traffic signal 2 --> Traffic Info
+    (60, 28, 100): 9,  # Traffic signal 3 --> Traffic Info
+    (0, 255, 255): 9,  # Traffic sign 1 --> Traffic Info
+    (30, 220, 220): 9,  # Traffic sign 2 --> Traffic Info
+    (60, 157, 199): 9,  # Traffic sign 3 --> Traffic Info
+    (255, 255, 0): 12,  # Utility vehicle 1 --> Trucks
+    (255, 255, 200): 12,  # Utility vehicle 2 --> Trucks
+    (233, 100, 0): 4,  # Sidebars --> Poles
+    (110, 110, 0): 1,  # Speed bumper --> Road
+    (128, 128, 0): 10,  # Curb stones --> Curb stones
+    (255, 193, 37): 6,  # Solid line --> Lane lines
+    (64, 0, 64): 8,  # Irrelevant signs --> Irrelevant
+    (185, 122, 87): 13,  # Road blocks --> Grid structure
+    (139, 99, 108): 11,  # Non-drivable street --> Side walk
+    (210, 50, 115): 1,  # Zebra crossing --> Road
+    (255, 0, 128): 14,  # Obstacles / trash on road
+    (255, 246, 143): 4,  # Poles --> Poles
+    (150, 0, 150): 1,  # RD restricted area --> Road
+    (204, 255, 153): 15,  # Animals --> Pedestrians
+    (238, 162, 173): 13,  # Grid structure --> Grid structure
+    (33, 44, 177): 8,  # Signal corpus --> Irrelevant
+    (180, 50, 180): 1,  # Drivable cobblestone --> Road
+    (255, 70, 185): 9,  # Electronic traffic --> Traffic Info
+    (238, 233, 191): 1,  # Slow drive area --> Road
+    (147, 253, 194): 3,  # Nature object --> Nature
+    (150, 150, 200): 18,  # Parking area
+    (180, 150, 200): 11,  # Side walk
+    (72, 209, 204): 16,  # Ego car
+    (200, 125, 210): 1,  # Painted driv. instr. --> Road
+    (159, 121, 238): 9,  # Traffic guide obj. --> Traffic Info
+    (128, 0, 255): 6,  # Dashed line --> Lane lines
+    (255, 0, 255): 1,  # RD normal street --> Road
+    (135, 206, 255): 2,  # Sky
+    (241, 230, 255): 7,  # Buildings
+    (96, 69, 143): 0,  # Blurred area --> Background
+    (53, 46, 82): 255,  # Rain dirt --> IGNORED
+}
+
+SEG_COLOR_DICT_LANESEG = {
+    (255, 193, 37): 1,  # Solid line --> Road
+    (210, 50, 115): 1,  # Zebra crossing --> Road
+    (200, 125, 210): 1,  # Painted driv. instr. --> Road
+    (128, 0, 255): 1,  # Dashed line --> Road
     (96, 69, 143): 255,  # Blurred area --> Static (void)
     (53, 46, 82): 255,  # Rain dirt --> Dynamic (void)
 }
 
-SEG_COLOR_DICT_BEV = {
-    (255, 0, 0): 2,  # Car 1 --> Car
-    (200, 0, 0): 2,  # Car 2 --> 19
-    (150, 0, 0): 2,  # Car 3 --> Car
-    (128, 0, 0): 2,  # Car 4 --> Car
-    (182, 89, 6): 3,  # Bicycle 1 --> Bicycle
-    (150, 50, 4): 3,  # Bicycle 2 --> Bicycle
-    (90, 30, 1): 3,  # Bicycle 3 --> Bicycle
-    (90, 30, 30): 3,  # Bicycle 4 --> Bicycle
-    (204, 153, 255): 3,  # Pedestrian 1 --> Person
-    (189, 73, 155): 3,  # Pedestrian 2 --> Person
-    (239, 89, 191): 3,  # Pedestrian 3 --> Person
-    (255, 128, 0): 2,  # Truck 1 --> Truck
-    (200, 128, 0): 2,  # Truck 2 --> Truck
-    (150, 128, 0): 2,  # Truck 3 --> Truck
-    (0, 0, 100): 2,  # Tractor --> Utility vehicle (*not in CS)
-    (0, 255, 0): 2,  # Small vehicles 1 --> Motorcycle
-    (0, 200, 0): 2,  # Small vehicles 2 --> Motorcycle
-    (0, 150, 0): 2,  # Small vehicles 3 --> Motorcycle
-    (0, 128, 255): 5,  # Traffic signal 1 --> Traffic light
-    (30, 28, 158): 5,  # Traffic signal 2 --> Traffic light
-    (60, 28, 100): 5,  # Traffic signal 3 --> Traffic light
-    (0, 255, 255): 5,  # Traffic sign 1 --> Traffic sign
-    (30, 220, 220): 5,  # Traffic sign 2 --> Traffic sign
-    (60, 157, 199): 5,  # Traffic sign 3 --> Traffic sign
-    (255, 255, 0): 2,  # Utility vehicle 1 --> Utility vehicle (*not in CS)
-    (255, 255, 200): 2,  # Utility vehicle 2 --> Utility vehicle (*not in CS)
-    (233, 100, 0): 5,  # Sidebars --> Poles
-    (110, 110, 0): 0,  # Speed bumper --> Road
-    (128, 128, 0): 5,  # Curbstone --> Sidewalk
-    (255, 193, 37): 1,  # Solid line --> Road
-    (64, 0, 64): 5,  # Irrelevant signs --> Background (*not in CS)
-    (185, 122, 87): 5,  # Road blocks --> Wall
-    (139, 99, 108): 5,  # Non-drivable street --> Background (*not in CS)
-    (210, 50, 115): 1,  # Zebra crossing --> Road
-    (255, 0, 128): 5,  # Obstacles / trash --> Background (*not in CS)
-    (255, 246, 143): 5,  # Poles --> Poles
-    (150, 0, 150): 0,  # RD restricted area --> Road
-    (204, 255, 153): 5,  # Animals --> Animal (*not in CS)
-    (238, 162, 173): 5,  # Grid structure --> Fence
-    (33, 44, 177): 5,  # Signal corpus --> Traffic light
-    (180, 50, 180): 0,  # Drivable cobblestone --> Road
-    (255, 70, 185): 5,  # Electronic traffic --> Background (*not in CS)
-    (238, 233, 191): 0,  # Slow drive area --> Road
-    (147, 253, 194): 5,  # Nature object --> Vegetation
-    (150, 150, 200): 0,  # Parking area --> Road
-    (180, 150, 200): 5,  # Sidewalk --> Sidewalk
-    (72, 209, 204): 255,  # Ego car --> Static (void)
-    (200, 125, 210): 1,  # Painted driv. instr. --> Road
-    (159, 121, 238): 5,  # Traffic guide obj. --> Wall
-    (128, 0, 255): 1,  # Dashed line --> Road
-    (255, 0, 255): 0,  # RD normal street --> Road
-    (135, 206, 255): 4,  # Sky --> Sky
-    (241, 230, 255): 5,  # Buildings --> Building
-    (96, 69, 143): 255,  # Blurred area --> Static (void)
-    (53, 46, 82): 255,  # Rain dirt --> Dynamic (void)
-}
+VAL_SEQS = ['20181008_095521', '20181108_141609', '20181204_154421']
+TEST_SEQS = ['20181016_125231', '20181108_084007', '20181204_170238']
+# Samples in sequence '20181008_095521' before/after belong to train/val split
+SPECIAL_SEQ_ID = '20181008_095521'
+
+SPECIAL_FRAME_SPLIT = 55000
 
 
 def modify_label_filename(label_filepath, label_choice):
@@ -211,54 +169,19 @@ def modify_label_filename(label_filepath, label_choice):
         return label_filepath
 
     label_filepath = label_filepath.replace('_label_', '_camera_')
-    if label_choice == 'a2d2':
+    if label_choice == '34_cls':
         label_filepath = label_filepath.replace('.png', LABEL_SUFFIX_34_CLS)
-    elif label_choice == 'cityscapes':
-        label_filepath = label_filepath.replace('.png', LABEL_SUFFIX_18_CLS)
-    elif label_choice == 'bev':
-        label_filepath = label_filepath.replace('.png', LABEL_SUFFIX_BEV)
+    elif label_choice == '19_cls':
+        label_filepath = label_filepath.replace('.png', LABEL_SUFFIX_19_CLS)
+    elif label_choice == 'binary_laneseg':
+        label_filepath = label_filepath.replace('.png', LABEL_SUFFIX_LANESEG)
     else:
         raise ValueError
     return label_filepath
 
 
-def convert_a2d2_trainids(label_filepath, ignore_id=255):
-    """Saves a new semantic label using the A2D2 label categories.
-
-    The new image is saved into the same directory as the original image having
-    an additional suffix.
-
-    Args:
-        label_filepath: Path to the original semantic label.
-        ignore_id: Default value for unlabeled elements.
-    """
-    # Read label file as Numpy array (H, W, 3)
-    orig_label = mmcv.imread(label_filepath, channel_order='rgb')
-
-    # Empty array with all elements set as 'ignore id' label
-    H, W, _ = orig_label.shape
-    mod_label = ignore_id * np.ones((H, W), dtype=int)
-
-    seg_colors = list(SEG_COLOR_DICT_A2D2.keys())
-    for seg_color in seg_colors:
-        # The operation produce (H,W,3) array of (i,j,k)-wise truth values
-        mask = (orig_label == seg_color)
-        # Take the product channel-wise to falsify any partial match and
-        # collapse RGB channel dimension (H,W,3) --> (H,W)
-        #   Ex: [True, False, False] --> [False]
-        mask = np.prod(mask, axis=-1)
-        mask = mask.astype(bool)
-        # Segment masked elements with 'trainIds' value
-        mod_label[mask] = SEG_COLOR_DICT_A2D2[seg_color]
-
-    # Save new 'trainids' semantic label
-    label_filepath = modify_label_filename(label_filepath, 'a2d2')
-    label_img = mod_label.astype(np.uint8)
-    mmcv.imwrite(label_img, label_filepath)
-
-
-def convert_cityscapes_trainids(label_filepath, ignore_id=255):
-    """Saves a new semantic label following the Cityscapes 'trainids' format.
+def convert_34_cls_trainids(label_filepath, ignore_id=255):
+    """Saves a new semantic label using 34 class category labels.
 
     The new image is saved into the same directory as the original image having
     an additional suffix.
@@ -273,7 +196,7 @@ def convert_cityscapes_trainids(label_filepath, ignore_id=255):
     H, W, _ = orig_label.shape
     mod_label = ignore_id * np.ones((H, W), dtype=int)
 
-    seg_colors = list(SEG_COLOR_DICT_CITYSCAPES.keys())
+    seg_colors = list(SEG_COLOR_DICT_34_CLS.keys())
     for seg_color in seg_colors:
         # The operation produce (H,W,3) array of (i,j,k)-wise truth values
         mask = (orig_label == seg_color)
@@ -283,15 +206,49 @@ def convert_cityscapes_trainids(label_filepath, ignore_id=255):
         mask = np.prod(mask, axis=-1)
         mask = mask.astype(bool)
         # Segment masked elements with 'trainIds' value
-        mod_label[mask] = SEG_COLOR_DICT_CITYSCAPES[seg_color]
+        mod_label[mask] = SEG_COLOR_DICT_34_CLS[seg_color]
 
     # Save new 'trainids' semantic label
-    label_filepath = modify_label_filename(label_filepath, 'cityscapes')
+    label_filepath = modify_label_filename(label_filepath, '34_cls')
     label_img = mod_label.astype(np.uint8)
     mmcv.imwrite(label_img, label_filepath)
 
 
-def convert_bev_trainids(label_filepath, ignore_id=255):
+def convert_19_cls_trainids(label_filepath, ignore_id=255):
+    """Saves a new semantic label using 19 class category labels.
+
+    The new image is saved into the same directory as the original image having
+    an additional suffix.
+    Args:
+        label_filepath: Path to the original semantic label.
+        ignore_id: Default value for unlabeled elements.
+    """
+    # Read label file as Numpy array (H, W, 3)
+    orig_label = mmcv.imread(label_filepath, channel_order='rgb')
+
+    # Empty array with all elements set as 'ignore id' label
+    H, W, _ = orig_label.shape
+    mod_label = ignore_id * np.ones((H, W), dtype=int)
+
+    seg_colors = list(SEG_COLOR_DICT_19_CLS.keys())
+    for seg_color in seg_colors:
+        # The operation produce (H,W,3) array of (i,j,k)-wise truth values
+        mask = (orig_label == seg_color)
+        # Take the product channel-wise to falsify any partial match and
+        # collapse RGB channel dimension (H,W,3) --> (H,W)
+        #   Ex: [True, False, False] --> [False]
+        mask = np.prod(mask, axis=-1)
+        mask = mask.astype(bool)
+        # Segment masked elements with 'trainIds' value
+        mod_label[mask] = SEG_COLOR_DICT_19_CLS[seg_color]
+
+    # Save new 'trainids' semantic label
+    label_filepath = modify_label_filename(label_filepath, '19_cls')
+    label_img = mod_label.astype(np.uint8)
+    mmcv.imwrite(label_img, label_filepath)
+
+
+def convert_laneseg_trainids(label_filepath, ignore_id=0):
     """Saves a new semantic label following the BEV 'trainids' format.
 
     The new image is saved into the same directory as the original image having
@@ -307,7 +264,7 @@ def convert_bev_trainids(label_filepath, ignore_id=255):
     H, W, _ = orig_label.shape
     mod_label = ignore_id * np.ones((H, W), dtype=int)
 
-    seg_colors = list(SEG_COLOR_DICT_BEV.keys())
+    seg_colors = list(SEG_COLOR_DICT_LANESEG.keys())
     for seg_color in seg_colors:
         # The operation produce (H,W,3) array of (i,j,k)-wise truth values
         mask = (orig_label == seg_color)
@@ -317,10 +274,10 @@ def convert_bev_trainids(label_filepath, ignore_id=255):
         mask = np.prod(mask, axis=-1)
         mask = mask.astype(bool)
         # Segment masked elements with 'trainIds' value
-        mod_label[mask] = SEG_COLOR_DICT_BEV[seg_color]
+        mod_label[mask] = SEG_COLOR_DICT_LANESEG[seg_color]
 
     # Save new 'trainids' semantic label
-    label_filepath = modify_label_filename(label_filepath, 'bev')
+    label_filepath = modify_label_filename(label_filepath, 'binary_laneseg')
     label_img = mod_label.astype(np.uint8)
     mmcv.imwrite(label_img, label_filepath)
 
@@ -372,8 +329,6 @@ def create_split_dir(img_filepaths,
 
 
 def restructure_a2d2_directory(a2d2_path,
-                               val_ratio,
-                               test_ratio,
                                label_choice,
                                train_on_val_and_test=False,
                                use_symlinks=True):
@@ -413,12 +368,7 @@ def restructure_a2d2_directory(a2d2_path,
         use_symlinks: Symbolically link existing files in the original A2D2
                       dataset directory. If false, files will be copied.
     """
-    for r in [val_ratio, test_ratio]:
-        assert r >= 0. and r < 1., 'Invalid ratio {}'.format(r)
-
     # Create new directory structure (if not already exist)
-    mmcv.mkdir_or_exist(osp.join(a2d2_path, 'images'))
-    mmcv.mkdir_or_exist(osp.join(a2d2_path, 'annotations'))
     mmcv.mkdir_or_exist(osp.join(a2d2_path, 'images', 'train'))
     mmcv.mkdir_or_exist(osp.join(a2d2_path, 'images', 'val'))
     mmcv.mkdir_or_exist(osp.join(a2d2_path, 'images', 'test'))
@@ -427,44 +377,71 @@ def restructure_a2d2_directory(a2d2_path,
     mmcv.mkdir_or_exist(osp.join(a2d2_path, 'annotations', 'test'))
 
     # Lists containing all images and labels to symlinked
-    img_filepaths = sorted(glob.glob(osp.join(a2d2_path, '*/camera/*/*.png')))
+    img_filepaths = sorted(
+        glob.glob(osp.join(a2d2_path, '*/camera/*/*crop.png')))
 
-    if label_choice == 'a2d2':
+    if label_choice == '34_cls':
         label_suffix = LABEL_SUFFIX_34_CLS
-    elif label_choice == 'cityscapes':
-        label_suffix = LABEL_SUFFIX_18_CLS
-    elif label_choice == 'bev':
-        label_suffix = LABEL_SUFFIX_BEV
+    elif label_choice == '19_cls':
+        label_suffix = LABEL_SUFFIX_19_CLS
+    elif label_choice == 'binary_laneseg':
+        label_suffix = LABEL_SUFFIX_LANESEG
     else:
         raise ValueError
     ann_filepaths = sorted(
-        glob.glob(osp.join(a2d2_path, '*/label/*/*{}'.format(label_suffix))))
+        glob.glob(
+            osp.join(a2d2_path, '*/label/*/*crop{}'.format(label_suffix))))
 
     # Randomize order of (image, label) pairs
     pairs = list(zip(img_filepaths, ann_filepaths))
     random.shuffle(pairs)
     img_filepaths, ann_filepaths = zip(*pairs)
 
-    # Split data according to given ratios
-    total_samples = len(img_filepaths)
-    train_ratio = 1.0 - val_ratio - test_ratio
+    # Split data according to specified sequences
+    train_img_paths = []
+    train_ann_paths = []
+    val_img_paths = []
+    val_ann_paths = []
+    test_img_paths = []
+    test_ann_paths = []
+    for sample_idx in range(len(img_filepaths)):
+        img_filepath = img_filepaths[sample_idx]
+        ann_filepath = ann_filepaths[sample_idx]
 
-    train_idx_end = int(np.ceil(train_ratio * (total_samples - 1)))
-    val_idx_end = train_idx_end + int(np.ceil(val_ratio * total_samples))
+        seq_id = img_filepath.split('/')[-4]
 
-    # Train split
-    if train_on_val_and_test:
-        train_img_paths = img_filepaths
-        train_ann_paths = ann_filepaths
-    else:
-        train_img_paths = img_filepaths[:train_idx_end]
-        train_ann_paths = ann_filepaths[:train_idx_end]
-    # Val split
-    val_img_paths = img_filepaths[train_idx_end:val_idx_end]
-    val_ann_paths = ann_filepaths[train_idx_end:val_idx_end]
-    # Test split
-    test_img_paths = img_filepaths[val_idx_end:]
-    test_ann_paths = ann_filepaths[val_idx_end:]
+        # NOTE: Need to handle exception where part of a sequence goes to
+        # training and the other part to validation split by a frame index
+        if seq_id in VAL_SEQS:
+            # Parse frame index from last part of filename
+            frame_idx = img_filepath.split('_')[-1]
+            frame_idx = int(frame_idx.replace('.png', ''))
+            # Add sample to validation split unless it is below a frame split
+            # index for one of the sequences
+            if seq_id == SPECIAL_SEQ_ID and frame_idx < SPECIAL_FRAME_SPLIT:
+                # Add sample to train split
+                train_img_paths.append(img_filepath)
+                train_ann_paths.append(ann_filepath)
+            else:
+                val_img_paths.append(img_filepath)
+                val_ann_paths.append(ann_filepath)
+                # To train model on the entire data
+                if train_on_val_and_test:
+                    train_img_paths = img_filepaths
+                    train_ann_paths = ann_filepaths
+
+        elif seq_id in TEST_SEQS:
+            # Add sample to test split
+            test_img_paths.append(img_filepath)
+            test_ann_paths.append(ann_filepath)
+            # To train model on the entire data
+            if train_on_val_and_test:
+                train_img_paths = img_filepaths
+                train_ann_paths = ann_filepaths
+        else:
+            # Add sample to train split
+            train_img_paths.append(img_filepath)
+            train_ann_paths.append(ann_filepath)
 
     create_split_dir(
         train_img_paths,
@@ -488,6 +465,25 @@ def restructure_a2d2_directory(a2d2_path,
         use_symlinks=use_symlinks)
 
 
+def generate_crop(imgpath, H=1208, W=1920, H_cropped=604):
+    """Generate cropped versions of images containing the bottom part."""
+    # Create cropped image path while avoiding recursive duplication
+    file_ending = imgpath[-5]
+    if file_ending.isdigit():
+
+        bbox = np.array([0, H - H_cropped, W, H])
+
+        try:
+            img = mmcv.imread(imgpath, channel_order='bgr')
+            img = mmcv.imcrop(img, bbox)
+        except Exception as e:
+            print(f"\nFailed to process file \'{imgpath}\' --> Skip\n")
+            print(e)
+
+        crop_imgpath = imgpath.replace('.png', '_crop.png')
+        mmcv.imwrite(img, crop_imgpath)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description='Convert A2D2 annotations to TrainIds')
@@ -496,6 +492,18 @@ def parse_args():
         help='A2D2 segmentation data absolute path\
                            (NOT the symbolically linked one!)')
     parser.add_argument('-o', '--out-dir', help='Output path')
+    parser.add_argument(
+        '--no-crop-gen',
+        dest='crop_gen',
+        action='store_false',
+        help='Skips generating cropped versions of images and labels')
+    parser.set_defaults(crop_gen=True)
+    parser.add_argument(
+        '--no-crops',
+        dest='use_crops',
+        action='store_false',
+        help='Use original full images instead of crops')
+    parser.set_defaults(use_crops=True)
     parser.add_argument(
         '--no-convert',
         dest='convert',
@@ -512,11 +520,7 @@ def parse_args():
         '--choice',
         default='cityscapes',
         help='Label conversion type choice: \'cityscapes\' (18 classes) or '
-        '\'a2d2\' (34 classes), \'bev\' (6 classes)')
-    parser.add_argument(
-        '--val', default=0.103, type=float, help='Validation set sample ratio')
-    parser.add_argument(
-        '--test', default=0.197, type=float, help='Test set sample ratio')
+        '\'a2d2\' (34 classes), \'binary_laneseg\' (2 classes)')
     parser.add_argument(
         '--train-on-val-and-test',
         dest='train_on_val_and_test',
@@ -600,36 +604,56 @@ def main():
 
     # Create a list of filepaths to all original labels
     # NOTE: Original label files have a number before '.png'
+    img_filepaths = glob.glob(osp.join(a2d2_path, '*/camera/*/*.png'))
     label_filepaths = glob.glob(osp.join(a2d2_path, '*/label/*/*[0-9].png'))
+
+    if args.crop_gen:
+        print('Generating cropped images')
+        if args.nproc > 1:
+            mmcv.track_parallel_progress(generate_crop, img_filepaths,
+                                         args.nproc)
+            mmcv.track_parallel_progress(generate_crop, label_filepaths,
+                                         args.nproc)
+        else:
+            mmcv.track_progress(generate_crop, img_filepaths)
+            mmcv.track_progress(generate_crop, label_filepaths)
+
+    if args.use_crops:
+        print('Use cropped images')
+        img_filepaths = [
+            path.replace('.jpg', '_crop.jpg') for path in img_filepaths
+        ]
+        label_filepaths = [
+            path.replace('.png', '_crop.png') for path in label_filepaths
+        ]
 
     # Convert segmentation images to the Cityscapes 'TrainIds' values
     if args.convert:
         seg_choice = args.choice
-        if seg_choice == 'cityscapes':
+        if seg_choice == '19_cls':
             if args.nproc > 1:
-                mmcv.track_parallel_progress(convert_cityscapes_trainids,
+                mmcv.track_parallel_progress(convert_19_cls_trainids,
                                              label_filepaths, args.nproc)
             else:
-                mmcv.track_progress(convert_cityscapes_trainids,
-                                    label_filepaths)
-        elif seg_choice == 'a2d2':
+                mmcv.track_progress(convert_19_cls_trainids, label_filepaths)
+        elif seg_choice == '34_cls':
             if args.nproc > 1:
-                mmcv.track_parallel_progress(convert_a2d2_trainids,
+                mmcv.track_parallel_progress(convert_34_cls_trainids,
                                              label_filepaths, args.nproc)
             else:
-                mmcv.track_progress(convert_a2d2_trainids, label_filepaths)
-        elif seg_choice == 'bev':
+                mmcv.track_progress(convert_34_cls_trainids, label_filepaths)
+        elif seg_choice == 'binary_laneseg':
             if args.nproc > 1:
-                mmcv.track_parallel_progress(convert_bev_trainids,
+                mmcv.track_parallel_progress(convert_laneseg_trainids,
                                              label_filepaths, args.nproc)
             else:
-                mmcv.track_progress(convert_bev_trainids, label_filepaths)
+                mmcv.track_progress(convert_laneseg_trainids, label_filepaths)
         else:
             raise ValueError
 
     # Restructure directory structure into 'img_dir' and 'ann_dir'
     if args.restruct:
-        restructure_a2d2_directory(out_dir, args.val, args.test, args.choice,
+        restructure_a2d2_directory(out_dir, args.choice,
                                    args.train_on_val_and_test, args.symlink)
 
 
