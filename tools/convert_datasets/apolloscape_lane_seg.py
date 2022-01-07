@@ -213,8 +213,6 @@ def restructure_directory(root_path,
         assert r >= 0. and r < 1., 'Invalid ratio {}'.format(r)
 
     # Create new directory structure (if not already exist)
-    mmcv.mkdir_or_exist(osp.join(root_path, 'images'))
-    mmcv.mkdir_or_exist(osp.join(root_path, 'annotations'))
     mmcv.mkdir_or_exist(osp.join(root_path, 'images', 'train'))
     mmcv.mkdir_or_exist(osp.join(root_path, 'images', 'val'))
     mmcv.mkdir_or_exist(osp.join(root_path, 'images', 'test'))
@@ -224,11 +222,11 @@ def restructure_directory(root_path,
 
     # Lists containing all images and labels to symlinked
 
-    img_filepaths = sorted(
-        glob.glob(
-            osp.join(
-                root_path,
-                'ColorImage_road*/ColorImage/Record*/Camera_*/*_crop.jpg')))
+    # img_filepaths = sorted(
+    #     glob.glob(
+    #         osp.join(
+    #             root_path,
+    #             'ColorImage_road*/ColorImage/Record*/Camera_*/*_crop.jpg')))
 
     if label_choice == 'binary':
         label_suffix = LABEL_SUFFIX_BINARY
@@ -239,6 +237,15 @@ def restructure_directory(root_path,
             osp.join(
                 root_path,
                 '*/Label/Record*/Camera_*/*_crop{}'.format(label_suffix))))
+
+    # Generate an ordered list of images corresponding to the list of labels
+    img_filepaths = []
+    for ann_filepath in ann_filepaths:
+        img_filepath = ann_filepath.replace('Labels', 'ColorImage')
+        img_filepath = img_filepath.replace('Label', 'ColorImage')
+        img_filepath = img_filepath.replace('_bin_crop_BinaryTrainIds.png',
+                                            '_crop.jpg')
+        img_filepaths.append(img_filepath)
 
     # Randomize order of (image, label) pairs
     pairs = list(zip(img_filepaths, ann_filepaths))
