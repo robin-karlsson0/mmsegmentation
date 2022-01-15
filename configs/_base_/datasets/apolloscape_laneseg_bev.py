@@ -52,6 +52,6 @@ data = dict(
     test=dict(
         type=dataset_type,
         data_root=data_root,
-        img_dir='images/val',
+        img_dir='images/test',
         ann_dir='annotations/test',
         pipeline=test_pipeline))
