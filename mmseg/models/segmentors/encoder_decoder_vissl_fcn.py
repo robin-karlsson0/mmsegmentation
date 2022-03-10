@@ -26,7 +26,8 @@ class EncoderDecoderVISSLFCN(BaseSegmentor):
                  train_cfg=None,
                  test_cfg=None,
                  vissl_params=None,
-                 init_cfg=None):
+                 init_cfg=None,
+                 pretrained=None):
         super(EncoderDecoderVISSLFCN, self).__init__(init_cfg)
 
         self._init_decode_head(decode_head)
@@ -161,6 +162,11 @@ class EncoderDecoderVISSLFCN(BaseSegmentor):
         Returns:
             dict[str, Tensor]: a dictionary of loss components
         """
+        # import matplotlib.pyplot as plt
+        # import numpy as np
+        # a = img[0].cpu().numpy()
+        # a = np.transpose(a, (1, 2, 0))
+        # print(a.shape)
 
         # VISSL model inference
         with torch.no_grad():
