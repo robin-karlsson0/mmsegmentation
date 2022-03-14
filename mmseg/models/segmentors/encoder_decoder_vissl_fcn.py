@@ -161,6 +161,11 @@ class EncoderDecoderVISSLFCN(BaseSegmentor):
         Returns:
             dict[str, Tensor]: a dictionary of loss components
         """
+        # import matplotlib.pyplot as plt
+        # import numpy as np
+        # a = img[0].cpu().numpy()
+        # a = np.transpose(a, (1, 2, 0))
+        # print(a.shape)
 
         # VISSL model inference
         with torch.no_grad():

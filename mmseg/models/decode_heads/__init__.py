@@ -3,6 +3,7 @@ from .ann_head import ANNHead
 from .apc_head import APCHead
 from .aspp_head import ASPPHead
 from .cc_head import CCHead
+from .cluster_head import ClusterHead
 from .da_head import DAHead
 from .dm_head import DMHead
 from .dnl_head import DNLHead
@@ -33,5 +34,5 @@ __all__ = [
     'EncHead', 'DepthwiseSeparableFCNHead', 'FPNHead', 'EMAHead', 'DNLHead',
     'PointHead', 'APCHead', 'DMHead', 'LRASPPHead', 'SETRUPHead',
     'SETRMLAHead', 'DPTHead', 'SETRMLAHead', 'SegformerHead', 'ISAHead',
-    'STDCHead'
+    'STDCHead', 'ClusterHead'
 ]
