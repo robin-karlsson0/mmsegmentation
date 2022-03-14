@@ -1,7 +1,9 @@
 # Copyright (c) OpenMMLab. All rights reserved.
+import copy
 import pickle
 
 import faiss
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
@@ -32,15 +34,17 @@ class ClusterHead(BaseDecodeHead):
         super(ClusterHead, self).__init__(**kwargs)
 
         # Setup k-means cluster estimator
-        with open('/home/robin/projects/vissl/kmeans_centroids.pkl',
+        exp = self.act_cfg
+        with open(f'/home/robin/projects/vissl/kmeans_centroids_{exp}.pkl',
                   'rb') as f:
             kmeans_centroids = pickle.load(f)
         self.index = faiss.IndexFlatL2(kernel_size)
         self.index.add(kmeans_centroids)
 
         # Load cluster to class mapping
-        with open('/home/robin/projects/vissl/cluster2class_mapping.pkl',
-                  'rb') as f:
+        with open(
+                f'/home/robin/projects/vissl/cluster2class_mapping_{exp}.pkl',
+                'rb') as f:
             self.cluster2class_mapping = pickle.load(f)
 
     def forward(self, inputs):
@@ -69,9 +73,19 @@ class ClusterHead(BaseDecodeHead):
             mask = (cluster_idx_map == idx)
             output[class_idx] = np.logical_or(output[class_idx], mask)
 
+        cluster_idx_map_ = copy.deepcopy(cluster_idx_map)
+        h, w = cluster_idx_map_.shape
+        cluster_idx_map_rgb = np.zeros((h, w, 3))
+        for idx in np.unique(cluster_idx_map_):
+            rgb = np.random.randint(0, 255, 3)
+            cluster_idx_map_rgb[cluster_idx_map_ == idx] = rgb
+
+        # output_ = copy.deepcopy(output)
         # for idx in range(27):
-        #     output[idx] *= idx
-        # output = np.sum(output, axis=0)
+        #     output_[idx] *= idx
+        # output_ = np.sum(output_, axis=0)
+        plt.imshow(cluster_idx_map_rgb.astype(int))
+        plt.show()
 
         output = torch.tensor(output).unsqueeze(0)
 
