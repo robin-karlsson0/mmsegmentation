@@ -1,5 +1,4 @@
 import os
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -26,7 +25,8 @@ class EncoderDecoderVISSLFCN(BaseSegmentor):
                  train_cfg=None,
                  test_cfg=None,
                  vissl_params=None,
-                 init_cfg=None):
+                 init_cfg=None,
+                 pretrained=None):
         super(EncoderDecoderVISSLFCN, self).__init__(init_cfg)
 
         self._init_decode_head(decode_head)
