@@ -1,3 +1,4 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import argparse
 import glob
 import os.path as osp
@@ -277,7 +278,7 @@ def restructure_a2d2_directory(a2d2_path,
         img_filepath = img_filepaths[sample_idx]
         ann_filepath = ann_filepaths[sample_idx]
 
-        # Partions string: [generic/path/to/file] [/] [filename]
+        # Partitions string: [generic/path/to/file] [/] [filename]
         img_filename = img_filepath.rpartition('/')[2]
         ann_filename = ann_filepath.rpartition('/')[2]
 
@@ -336,7 +337,7 @@ def parse_args():
     parser.add_argument(
         '--nproc', default=1, type=int, help='Number of process')
     parser.add_argument(
-        '--symlink', default=True, help='Use symbolic links insted of copies')
+        '--symlink', default=True, help='Use symbolic links instead of copies')
     args = parser.parse_args()
     return args
 
