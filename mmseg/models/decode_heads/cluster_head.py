@@ -1,9 +1,9 @@
 # Copyright (c) OpenMMLab. All rights reserved.
-import copy
+# import copy
 import pickle
 
 import faiss
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
@@ -73,19 +73,21 @@ class ClusterHead(BaseDecodeHead):
             mask = (cluster_idx_map == idx)
             output[class_idx] = np.logical_or(output[class_idx], mask)
 
-        cluster_idx_map_ = copy.deepcopy(cluster_idx_map)
-        h, w = cluster_idx_map_.shape
-        cluster_idx_map_rgb = np.zeros((h, w, 3))
-        for idx in np.unique(cluster_idx_map_):
-            rgb = np.random.randint(0, 255, 3)
-            cluster_idx_map_rgb[cluster_idx_map_ == idx] = rgb
+        # Visualize clusters
+        # cluster_idx_map_ = copy.deepcopy(cluster_idx_map)
+        # h, w = cluster_idx_map_.shape
+        # cluster_idx_map_rgb = np.zeros((h, w, 3))
+        # for idx in np.unique(cluster_idx_map_):
+        #     rgb = np.random.randint(0, 255, 3)
+        #     cluster_idx_map_rgb[cluster_idx_map_ == idx] = rgb
+        # plt.imshow(cluster_idx_map_rgb.astype(int))
+        # plt.show()
 
+        # Visualize segmentation
         # output_ = copy.deepcopy(output)
         # for idx in range(27):
         #     output_[idx] *= idx
         # output_ = np.sum(output_, axis=0)
-        plt.imshow(cluster_idx_map_rgb.astype(int))
-        plt.show()
 
         output = torch.tensor(output).unsqueeze(0)
 
