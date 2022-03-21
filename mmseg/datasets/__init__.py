@@ -14,6 +14,7 @@ from .hrf import HRFDataset
 from .isaid import iSAIDDataset
 from .isprs import ISPRSDataset
 from .loveda import LoveDADataset
+from .mapillary_vistas import MapillaryVistasDataset
 from .night_driving import NightDrivingDataset
 from .pascal_context import PascalContextDataset, PascalContextDataset59
 from .potsdam import PotsdamDataset
@@ -27,5 +28,6 @@ __all__ = [
     'PascalContextDataset59', 'ChaseDB1Dataset', 'DRIVEDataset', 'HRFDataset',
     'STAREDataset', 'DarkZurichDataset', 'NightDrivingDataset',
     'COCOStuffDataset', 'LoveDADataset', 'MultiImageMixDataset',
-    'iSAIDDataset', 'ISPRSDataset', 'PotsdamDataset', 'BDD100KDataset'
+    'iSAIDDataset', 'ISPRSDataset', 'PotsdamDataset', 'BDD100KDataset',
+    'MapillaryVistasDataset'
 ]
