@@ -211,6 +211,7 @@ def get_idx2rgb_conversion(vistas_path, annotation_version):
 
 
 def restructure_vistas_directory(vistas_path,
+                                 ann_ver,
                                  train_on_val_and_test=False,
                                  use_symlinks=True):
     """Creates a new directory structure and link existing files into it.
@@ -235,6 +236,7 @@ def restructure_vistas_directory(vistas_path,
         ...
     Args:
         vistas_path: Absolute path to the Mapillary Vistas 'vistas/' directory.
+        ann_ver: String 'v1.2' or 'v2.0'.
         train_on_val_and_test: Use validation and test samples as training
                                samples if True.
         label_suffix: Label filename ending string.
@@ -261,7 +263,8 @@ def restructure_vistas_directory(vistas_path,
             img_filename = img_filepath.split('/')[-1]
 
             ann_filename = img_filename[:-4] + LABEL_SUFFIX
-            ann_filepath = f'{vistas_path}/{split}/v2.0/labels/{ann_filename}'
+            ann_filepath = f'{vistas_path}/{split}/{ann_ver}/labels/'
+            ann_filepath += f'{ann_filename}'
 
             img_linkpath = f'{vistas_path}/img_dir/{split}/{img_filename}'
             if split == 'testing':
@@ -423,8 +426,8 @@ def main():
 
     # Restructure directory structure into 'img_dir' and 'ann_dir'
     if args.restruct:
-        restructure_vistas_directory(out_dir, args.train_on_val_and_test,
-                                     args.symlink)
+        restructure_vistas_directory(out_dir, ann_ver,
+                                     args.train_on_val_and_test, args.symlink)
 
 
 if __name__ == '__main__':
