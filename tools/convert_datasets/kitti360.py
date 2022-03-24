@@ -134,38 +134,6 @@ def restructure_kitti360_directory(kitti360_path,
     val_filename = '2013_05_28_drive_val_frames.txt'
     val_frames = np.loadtxt(os.path.join(config_path, val_filename), dtype=str)
 
-    val_idx = 0
-    for idx in range(val_frames.shape[0]):
-        img_path = str(val_frames[idx, 0])
-        ann_path = str(val_frames[idx, 1])
-        ann_path = modify_label_filename(ann_path)
-
-        img_path = os.path.join(kitti360_path, img_path)
-        ann_path = os.path.join(kitti360_path, ann_path)
-
-        img_name = f'{val_idx}.png'
-        ann_name = f'{val_idx}.png'
-
-        img_linkpath = osp.join(kitti360_path, 'img_dir', 'val', img_name)
-        ann_linkpath = osp.join(kitti360_path, 'ann_dir', 'val', ann_name)
-
-        if use_symlinks:
-            # NOTE: Can only create new symlinks if no priors ones exists
-            try:
-                symlink(img_path, img_linkpath)
-            except FileExistsError:
-                pass
-            try:
-                symlink(ann_path, ann_linkpath)
-            except FileExistsError:
-                pass
-
-        else:
-            copyfile(img_path, img_linkpath)
-            copyfile(ann_path, ann_linkpath)
-
-        val_idx += 1
-
     train_idx = 0
     for idx in range(train_frames.shape[0]):
         img_path = str(train_frames[idx, 0])
@@ -175,8 +143,8 @@ def restructure_kitti360_directory(kitti360_path,
         img_path = os.path.join(kitti360_path, img_path)
         ann_path = os.path.join(kitti360_path, ann_path)
 
-        img_name = f'{train_idx}.png'
-        ann_name = f'{train_idx}.png'
+        img_name = f'train_{train_idx}.png'
+        ann_name = f'train_{train_idx}.png'
 
         img_linkpath = osp.join(kitti360_path, 'img_dir', 'train', img_name)
         ann_linkpath = osp.join(kitti360_path, 'ann_dir', 'train', ann_name)
@@ -197,6 +165,38 @@ def restructure_kitti360_directory(kitti360_path,
             copyfile(ann_path, ann_linkpath)
 
         train_idx += 1
+
+    val_idx = 0
+    for idx in range(val_frames.shape[0]):
+        img_path = str(val_frames[idx, 0])
+        ann_path = str(val_frames[idx, 1])
+        ann_path = modify_label_filename(ann_path)
+
+        img_path = os.path.join(kitti360_path, img_path)
+        ann_path = os.path.join(kitti360_path, ann_path)
+
+        img_name = f'val_{val_idx}.png'
+        ann_name = f'val_{val_idx}.png'
+
+        img_linkpath = osp.join(kitti360_path, 'img_dir', 'val', img_name)
+        ann_linkpath = osp.join(kitti360_path, 'ann_dir', 'val', ann_name)
+
+        if use_symlinks:
+            # NOTE: Can only create new symlinks if no priors ones exists
+            try:
+                symlink(img_path, img_linkpath)
+            except FileExistsError:
+                pass
+            try:
+                symlink(ann_path, ann_linkpath)
+            except FileExistsError:
+                pass
+
+        else:
+            copyfile(img_path, img_linkpath)
+            copyfile(ann_path, ann_linkpath)
+
+        val_idx += 1
 
 
 def parse_args():
