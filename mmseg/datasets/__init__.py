@@ -1,6 +1,7 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 from .a2d2 import A2D2MarkingsDataset
 from .ade import ADE20KDataset
+from .apolloscape import ApolloscapeDataset
 from .bdd100k import BDD100KDataset
 from .builder import DATASETS, PIPELINES, build_dataloader, build_dataset
 from .chase_db1 import ChaseDB1Dataset
@@ -31,5 +32,6 @@ __all__ = [
     'STAREDataset', 'DarkZurichDataset', 'NightDrivingDataset',
     'COCOStuffDataset', 'LoveDADataset', 'MultiImageMixDataset',
     'iSAIDDataset', 'ISPRSDataset', 'PotsdamDataset', 'BDD100KDataset',
-    'MapillaryVistasDataset', 'A2D2MarkingsDataset', 'KITTI360Dataset'
+    'MapillaryVistasDataset', 'A2D2MarkingsDataset', 'KITTI360Dataset',
+    'ApolloscapeDataset'
 ]
